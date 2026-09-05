@@ -1,0 +1,125 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+@import 'tailwindcss';
+
+@theme {
+  --font-sans: 'Outfit', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  
+  --color-midnight-900: #050816;
+  --color-midnight-800: #07111F;
+  --color-midnight-700: #0B1026;
+  
+  --color-electric-blue: #00D9FF;
+  --color-electric-cyan: #38F5FF;
+  --color-electric-purple: #7C5CFF;
+  --color-electric-green: #00FF66;
+  --color-electric-red: #FF3366;
+  
+  --color-bright-white: #F5F7FF;
+  --color-muted-text: #94A3B8;
+}
+
+html, body, #root {
+  height: 100%;
+  background-color: #050816;
+}
+
+body {
+  font-family: 'Outfit', sans-serif;
+  color: #F5F7FF;
+  overflow-x: hidden;
+}
+
+/* Starfield Background */
+.stars-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  background-color: #050816;
+  background-image: 
+    radial-gradient(1px 1px at 10% 20%, #ffffff 100%, transparent),
+    radial-gradient(1px 1px at 30% 60%, #ffffff 100%, transparent),
+    radial-gradient(2px 2px at 40% 10%, rgba(255,255,255,0.8) 100%, transparent),
+    radial-gradient(1.5px 1.5px at 70% 30%, #00D9FF 100%, transparent),
+    radial-gradient(1px 1px at 80% 80%, #ffffff 100%, transparent),
+    radial-gradient(2px 2px at 90% 50%, rgba(56, 245, 255, 0.6) 100%, transparent),
+    radial-gradient(1px 1px at 50% 90%, #ffffff 100%, transparent),
+    radial-gradient(1px 1px at 20% 80%, rgba(255,255,255,0.7) 100%, transparent);
+  background-size: 300px 300px;
+  background-repeat: repeat;
+}
+
+/* Twinkle animation */
+.stars-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image: 
+    radial-gradient(1.5px 1.5px at 15% 15%, rgba(255,255,255,0.9) 100%, transparent),
+    radial-gradient(1px 1px at 60% 40%, rgba(0,217,255,0.8) 100%, transparent),
+    radial-gradient(2px 2px at 75% 75%, rgba(255,255,255,0.9) 100%, transparent);
+  background-size: 400px 400px;
+  background-repeat: repeat;
+  animation: twinkle 4s ease-in-out infinite alternate;
+}
+
+@keyframes twinkle {
+  0% { opacity: 0.3; }
+  100% { opacity: 1; }
+}
+
+/* Glassmorphism */
+.glass-panel-dark {
+  background: rgba(7, 17, 31, 0.4);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(0, 217, 255, 0.15);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), inset 0 0 30px rgba(0, 217, 255, 0.05);
+}
+
+.glass-card-dark {
+  background: rgba(11, 16, 38, 0.5);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(0, 217, 255, 0.2);
+  box-shadow: 0 4px 24px 0 rgba(0, 0, 0, 0.4);
+}
+
+.glass-input {
+  background: rgba(5, 8, 22, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  color: #F5F7FF;
+}
+
+.glass-input:focus {
+  border-color: #00D9FF;
+  box-shadow: 0 0 15px rgba(0, 217, 255, 0.3), inset 0 0 5px rgba(0, 217, 255, 0.2);
+  outline: none;
+}
+
+/* Neons */
+.neon-text-blue {
+  text-shadow: 0 0 12px rgba(0, 217, 255, 0.6);
+}
+.neon-text-cyan {
+  text-shadow: 0 0 12px rgba(56, 245, 255, 0.6);
+}
+
+/* Animations */
+.thunder-flash {
+  position: fixed;
+  inset: 0;
+  background: #00D9FF;
+  z-index: -5;
+  pointer-events: none;
+  opacity: 0;
+}
+
+@keyframes thunder {
+  0% { opacity: 0; }
+  2% { opacity: 0.15; }
+  4% { opacity: 0; }
+  6% { opacity: 0.1; }
+  8% { opacity: 0; }
+  100% { opacity: 0; }
+}

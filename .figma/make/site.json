@@ -1,0 +1,10 @@
+{
+  "description": "Engage in a premium animated technical quiz designed for ECE students, featuring a modern interface, interactive elements, and real-time performance feedback.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
