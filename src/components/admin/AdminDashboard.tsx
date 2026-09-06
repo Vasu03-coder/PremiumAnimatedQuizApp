@@ -18,7 +18,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import type { Question, LiveStudentStatus, ProctoringViolation, QuizSubmission } from '../../types/quiz';
-import { supabase, quizRealtimeChannel } from '../../lib/supabase';
+import { supabase, subscribeToQuizArena } from '../../lib/supabase';
 
 interface AdminDashboardProps {
   questions: Question[];
@@ -109,42 +109,43 @@ export default function AdminDashboard({
     loadSupabaseParticipants();
   }, [questions.length]);
 
-  // Supabase Realtime Listener (No Page Refresh Required!)
+  // Supabase Realtime Listener (Safe subscription without duplicate joins)
   useEffect(() => {
-    const channel = quizRealtimeChannel
-      .on('broadcast', { event: 'student_joined' }, ({ payload }) => {
+    const unsubscribe = subscribeToQuizArena({
+      onStudentJoined: (payload) => {
         if (!payload || !payload.email) return;
+        const key = payload.email.toLowerCase();
         setStudents((prev) => ({
           ...prev,
-          [payload.email.toLowerCase()]: {
-            ...prev[payload.email.toLowerCase()],
+          [key]: {
+            ...(prev[key] || {}),
             ...payload,
             status: 'active',
           },
         }));
-      })
-      .on('broadcast', { event: 'score_update' }, ({ payload }) => {
+      },
+      onScoreUpdate: (payload) => {
         if (!payload || !payload.email) return;
         const key = payload.email.toLowerCase();
         setStudents((prev) => ({
           ...prev,
           [key]: {
             ...(prev[key] || {
-              studentId: payload.studentId,
-              name: payload.name,
+              studentId: payload.studentId || key,
+              name: payload.name || 'Candidate',
               email: payload.email,
-              college: payload.college,
+              college: payload.college || 'Engineering College',
               totalQuestions: payload.totalQuestions || questions.length,
             }),
-            score: payload.score,
-            currentQuestion: payload.currentQuestion,
+            score: payload.score ?? 0,
+            currentQuestion: payload.currentQuestion ?? 1,
             violationsCount: payload.violationsCount ?? prev[key]?.violationsCount ?? 0,
             status: payload.status || 'active',
             lastSeen: new Date().toISOString(),
           },
         }));
-      })
-      .on('broadcast', { event: 'proctoring_alert' }, ({ payload }) => {
+      },
+      onProctoringAlert: (payload) => {
         if (!payload) return;
         setViolations((prev) => [payload as ProctoringViolation, ...prev]);
         if (payload.studentEmail) {
@@ -161,8 +162,8 @@ export default function AdminDashboard({
             };
           });
         }
-      })
-      .on('broadcast', { event: 'quiz_completed' }, ({ payload }) => {
+      },
+      onQuizCompleted: (payload) => {
         if (!payload || !payload.participant_email) return;
         const key = payload.participant_email.toLowerCase();
         setStudents((prev) => ({
@@ -170,25 +171,26 @@ export default function AdminDashboard({
           [key]: {
             ...(prev[key] || {
               studentId: payload.id || key,
-              name: payload.participant_name,
+              name: payload.participant_name || 'Candidate',
               email: payload.participant_email,
               college: 'Engineering College',
-              totalQuestions: payload.total_questions,
+              totalQuestions: payload.total_questions || questions.length,
             }),
-            score: payload.score,
-            currentQuestion: payload.total_questions,
-            violationsCount: payload.violations_count,
+            score: payload.score ?? 0,
+            currentQuestion: payload.total_questions || questions.length,
+            violationsCount: payload.violations_count ?? 0,
             status: 'completed',
-            completedAt: payload.completed_at,
+            completedAt: payload.completed_at || new Date().toISOString(),
           },
         }));
-      })
-      .subscribe((status) => {
-        setIsConnected(status === 'SUBSCRIBED');
-      });
+      },
+      onStatusChange: (status) => {
+        setIsConnected(status);
+      },
+    });
 
     return () => {
-      channel.unsubscribe();
+      unsubscribe();
     };
   }, [questions.length]);
 

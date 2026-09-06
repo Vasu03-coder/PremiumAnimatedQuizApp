@@ -140,21 +140,24 @@ export async function recordQuizAttempt(submission: QuizSubmission) {
 }
 
 /**
- * Realtime Channel for Live Quiz Updates
+ * Safe broadcast event helper that reuses or creates the channel safely
  */
-export const quizRealtimeChannel = supabase.channel('spark-quiz-arena', {
-  config: {
-    presence: {
-      key: 'student',
+export function getOrCreateArenaChannel() {
+  const existing = supabase.getChannels().find((ch) => ch.topic === 'realtime:spark-quiz-arena');
+  if (existing) {
+    return existing;
+  }
+  return supabase.channel('spark-quiz-arena', {
+    config: {
+      broadcast: { self: true },
+      presence: { key: 'student' },
     },
-    broadcast: {
-      self: true,
-    },
-  },
-});
+  });
+}
 
 export function broadcastStudentJoined(status: LiveStudentStatus) {
-  return quizRealtimeChannel.send({
+  const ch = getOrCreateArenaChannel();
+  return ch.send({
     type: 'broadcast',
     event: 'student_joined',
     payload: status,
@@ -162,7 +165,8 @@ export function broadcastStudentJoined(status: LiveStudentStatus) {
 }
 
 export function broadcastScoreUpdate(status: Partial<LiveStudentStatus> & { studentId: string }) {
-  return quizRealtimeChannel.send({
+  const ch = getOrCreateArenaChannel();
+  return ch.send({
     type: 'broadcast',
     event: 'score_update',
     payload: status,
@@ -170,7 +174,8 @@ export function broadcastScoreUpdate(status: Partial<LiveStudentStatus> & { stud
 }
 
 export function broadcastProctoringAlert(violation: ProctoringViolation) {
-  return quizRealtimeChannel.send({
+  const ch = getOrCreateArenaChannel();
+  return ch.send({
     type: 'broadcast',
     event: 'proctoring_alert',
     payload: violation,
@@ -178,9 +183,63 @@ export function broadcastProctoringAlert(violation: ProctoringViolation) {
 }
 
 export function broadcastQuizCompleted(submission: QuizSubmission) {
-  return quizRealtimeChannel.send({
+  const ch = getOrCreateArenaChannel();
+  return ch.send({
     type: 'broadcast',
     event: 'quiz_completed',
     payload: submission,
   });
 }
+
+/**
+ * Safe subscriber function for AdminDashboard that cleanly handles mounting & unmounting
+ * without throwing "tried to join multiple times"
+ */
+export function subscribeToQuizArena(callbacks: {
+  onStudentJoined?: (student: LiveStudentStatus) => void;
+  onScoreUpdate?: (status: any) => void;
+  onProctoringAlert?: (violation: ProctoringViolation) => void;
+  onQuizCompleted?: (submission: QuizSubmission) => void;
+  onStatusChange?: (isConnected: boolean) => void;
+}) {
+  const existing = supabase.getChannels().find((ch) => ch.topic === 'realtime:spark-quiz-arena');
+  if (existing) {
+    supabase.removeChannel(existing);
+  }
+
+  const channel = supabase.channel('spark-quiz-arena', {
+    config: {
+      broadcast: { self: true },
+    },
+  });
+
+  if (callbacks.onStudentJoined) {
+    channel.on('broadcast', { event: 'student_joined' }, ({ payload }) => {
+      callbacks.onStudentJoined?.(payload);
+    });
+  }
+  if (callbacks.onScoreUpdate) {
+    channel.on('broadcast', { event: 'score_update' }, ({ payload }) => {
+      callbacks.onScoreUpdate?.(payload);
+    });
+  }
+  if (callbacks.onProctoringAlert) {
+    channel.on('broadcast', { event: 'proctoring_alert' }, ({ payload }) => {
+      callbacks.onProctoringAlert?.(payload);
+    });
+  }
+  if (callbacks.onQuizCompleted) {
+    channel.on('broadcast', { event: 'quiz_completed' }, ({ payload }) => {
+      callbacks.onQuizCompleted?.(payload);
+    });
+  }
+
+  channel.subscribe((status) => {
+    callbacks.onStatusChange?.(status === 'SUBSCRIBED');
+  });
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+}
+
