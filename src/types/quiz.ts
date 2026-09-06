@@ -38,9 +38,10 @@ export interface LiveStudentStatus {
   totalQuestions: number;
   score: number;
   violationsCount: number;
-  status: 'active' | 'completed' | 'flagged';
+  status: 'active' | 'completed' | 'flagged' | 'offline';
   lastSeen: string;
   completedAt?: string;
+  isOnline?: boolean;
 }
 
 export interface QuizSubmission {

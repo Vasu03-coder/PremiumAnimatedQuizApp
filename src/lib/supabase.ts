@@ -70,16 +70,12 @@ export async function verifyStudentRegistration(
       .eq('id', matchedParticipant.registration_id)
       .maybeSingle();
 
-    // Check if technical event is the technical-quiz
-    const isQuizSelected =
-      registration?.technical_event_id === TECHNICAL_QUIZ_EVENT_ID ||
-      // Or if participant exists in symposium portal
-      Boolean(registration);
-
-    if (!isQuizSelected) {
+    // Check if technical event is STRICTLY the technical-quiz
+    if (registration?.technical_event_id !== TECHNICAL_QUIZ_EVENT_ID) {
       return {
         success: false,
-        message: 'You have registered for the symposium, but Technical Quiz was not selected.',
+        message:
+          'Access Denied: Your registration is for another symposium event. Only candidates with confirmed registration for the "Technical Quiz" can enter this portal.',
       };
     }
 
@@ -103,6 +99,27 @@ export async function verifyStudentRegistration(
       success: false,
       message: 'Verification failed. Please retry or contact event admin.',
     };
+  }
+}
+
+/**
+ * Fetch ONLY participants registered for the Technical Quiz event
+ */
+export async function getTechnicalQuizParticipants() {
+  try {
+    const { data, error } = await supabase
+      .from('participants')
+      .select('id, registration_id, full_name, email, phone, college, department, created_at, registrations!inner(id, registration_code, technical_event_id, status)')
+      .eq('registrations.technical_event_id', TECHNICAL_QUIZ_EVENT_ID);
+
+    if (error) {
+      console.warn('Error querying technical quiz participants:', error.message);
+      return [];
+    }
+    return data || [];
+  } catch (err) {
+    console.error('getTechnicalQuizParticipants error:', err);
+    return [];
   }
 }
 

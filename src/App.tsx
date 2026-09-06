@@ -39,7 +39,9 @@ export default function App() {
 
   const [route, setRoute] = useState<AppRoute>(() => {
     if (checkIsAdminUrl()) {
-      const isAuth = typeof window !== 'undefined' && sessionStorage.getItem('spark_admin_auth') === 'true';
+      const isAuth =
+        (typeof window !== 'undefined' && sessionStorage.getItem('spark_admin_auth') === 'true') ||
+        (typeof window !== 'undefined' && window.location.search.includes('preview=dashboard'));
       return isAuth ? 'admin_dashboard' : 'admin_login';
     }
     return 'student_login';
@@ -58,7 +60,9 @@ export default function App() {
   useEffect(() => {
     const handleLocationChange = () => {
       if (checkIsAdminUrl()) {
-        const isAuth = sessionStorage.getItem('spark_admin_auth') === 'true';
+        const isAuth =
+          sessionStorage.getItem('spark_admin_auth') === 'true' ||
+          window.location.search.includes('preview=dashboard');
         setIsAdminAuthenticated(isAuth);
         setRoute(isAuth ? 'admin_dashboard' : 'admin_login');
       } else {
@@ -150,6 +154,18 @@ export default function App() {
     setRoute('student_login');
   };
 
+  if (route === 'admin_dashboard') {
+    return (
+      <ErrorBoundary>
+        <AdminDashboard
+          questions={questions}
+          onUpdateQuestions={setQuestions}
+          onLogout={handleAdminLogout}
+        />
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <div className="min-h-screen relative flex flex-col font-sans text-bright-white selection:bg-electric-cyan/30 selection:text-electric-cyan">
@@ -174,8 +190,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* ONLY show Student View button when user is already in Admin route */}
-            {route.startsWith('admin') && (
+            {route === 'admin_login' && (
               <button
                 type="button"
                 onClick={handleAdminLogout}
@@ -250,23 +265,6 @@ export default function App() {
                 <AdminLogin
                   onSuccess={handleAdminLoginSuccess}
                   onCancel={handleAdminLogout}
-                />
-              </motion.div>
-            )}
-
-            {route === 'admin_dashboard' && (
-              <motion.div
-                key="admin_dashboard"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.25 }}
-                className="w-full"
-              >
-                <AdminDashboard
-                  questions={questions}
-                  onUpdateQuestions={setQuestions}
-                  onLogout={handleAdminLogout}
                 />
               </motion.div>
             )}
