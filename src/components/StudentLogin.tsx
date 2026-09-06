@@ -6,10 +6,9 @@ import type { StudentProfile } from '../types/quiz';
 
 interface StudentLoginProps {
   onLoginSuccess: (student: StudentProfile) => void;
-  onOpenAdmin: () => void;
 }
 
-export default function StudentLogin({ onLoginSuccess, onOpenAdmin }: StudentLoginProps) {
+export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -153,7 +152,7 @@ export default function StudentLogin({ onLoginSuccess, onOpenAdmin }: StudentLog
         </form>
 
         {/* Helpful verified test account link */}
-        <div className="mt-6 pt-5 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+        <div className="mt-6 pt-5 border-t border-white/10 flex items-center justify-center text-xs">
           <button
             type="button"
             onClick={handleUseSampleAccount}
@@ -161,15 +160,6 @@ export default function StudentLogin({ onLoginSuccess, onOpenAdmin }: StudentLog
           >
             <Sparkles size={14} />
             <span>Load Registered Test Account</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={onOpenAdmin}
-            className="text-muted-text hover:text-bright-white transition-colors flex items-center gap-1.5 cursor-pointer font-mono"
-          >
-            <Lock size={13} />
-            <span>Admin Portal</span>
           </button>
         </div>
       </motion.div>

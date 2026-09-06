@@ -55,11 +55,12 @@ export default function AdminDashboard({
         if (participants && participants.length > 0) {
           const initialMap: Record<string, LiveStudentStatus> = {};
           participants.forEach((p, idx) => {
-            const key = p.email.toLowerCase();
+            const rawEmail = p.email || `participant_${p.id || idx}@symposium.local`;
+            const key = rawEmail.toLowerCase();
             initialMap[key] = {
-              studentId: p.id,
+              studentId: p.id || String(idx),
               name: p.full_name || 'Participant',
-              email: p.email,
+              email: rawEmail,
               college: p.college || 'Engineering College',
               currentQuestion: 1,
               totalQuestions: questions.length,
@@ -71,25 +72,32 @@ export default function AdminDashboard({
           });
 
           // Check if any stored submissions exist in localStorage
-          const savedSubmissions: QuizSubmission[] = JSON.parse(
-            localStorage.getItem('spark_quiz_submissions') || '[]'
-          );
-          savedSubmissions.forEach((sub) => {
-            const key = sub.participant_email.toLowerCase();
-            initialMap[key] = {
-              studentId: sub.id || key,
-              name: sub.participant_name,
-              email: sub.participant_email,
-              college: 'Engineering College',
-              currentQuestion: sub.total_questions,
-              totalQuestions: sub.total_questions,
-              score: sub.score,
-              violationsCount: sub.violations_count,
-              status: 'completed',
-              lastSeen: sub.completed_at,
-              completedAt: sub.completed_at,
-            };
-          });
+          try {
+            const savedSubmissions: QuizSubmission[] = JSON.parse(
+              localStorage.getItem('spark_quiz_submissions') || '[]'
+            );
+            if (Array.isArray(savedSubmissions)) {
+              savedSubmissions.forEach((sub) => {
+                if (!sub || !sub.participant_email) return;
+                const key = sub.participant_email.toLowerCase();
+                initialMap[key] = {
+                  studentId: sub.id || key,
+                  name: sub.participant_name || 'Participant',
+                  email: sub.participant_email,
+                  college: 'Engineering College',
+                  currentQuestion: sub.total_questions || questions.length,
+                  totalQuestions: sub.total_questions || questions.length,
+                  score: sub.score || 0,
+                  violationsCount: sub.violations_count || 0,
+                  status: 'completed',
+                  lastSeen: sub.completed_at || new Date().toISOString(),
+                  completedAt: sub.completed_at,
+                };
+              });
+            }
+          } catch (e) {
+            console.error('Error reading saved submissions:', e);
+          }
 
           setStudents(initialMap);
         }
