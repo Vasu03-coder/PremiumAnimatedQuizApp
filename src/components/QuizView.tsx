@@ -42,7 +42,8 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
     if (typeof window !== 'undefined' && window.location.search.includes('selected=1')) {
       return { 0: 1 };
     }
-    return {};
+    const empty: Record<number, number> = {};
+    return empty;
   });
   const [penalizedQuestions, setPenalizedQuestions] = useState<Record<number, boolean>>({});
   const [timeLeft, setTimeLeft] = useState(SECONDS_PER_QUESTION);
