@@ -13,6 +13,7 @@ import {
   broadcastStudentJoined,
   broadcastQuizCompleted,
   recordQuizAttempt,
+  syncQuestionsWithCloud,
 } from './lib/supabase';
 
 type AppRoute = 'student_login' | 'quiz_session' | 'quiz_result' | 'admin_login' | 'admin_dashboard';
@@ -44,17 +45,53 @@ export default function App() {
         (typeof window !== 'undefined' && window.location.search.includes('preview=dashboard'));
       return isAuth ? 'admin_dashboard' : 'admin_login';
     }
+    if (typeof window !== 'undefined' && window.location.search.includes('preview=quiz')) {
+      return 'quiz_session';
+    }
     return 'student_login';
   });
 
   const [questions, setQuestions] = useState<Question[]>(INITIAL_QUESTIONS);
-  const [activeStudent, setActiveStudent] = useState<StudentProfile | null>(null);
-  const [sessionQuestions, setSessionQuestions] = useState<Question[]>([]);
+  const [activeStudent, setActiveStudent] = useState<StudentProfile | null>(() => {
+    if (typeof window !== 'undefined' && window.location.search.includes('preview=quiz')) {
+      return {
+        id: 'preview-sankar',
+        registration_id: 'e22e519e-e092-4f7f-a65c-6b1104e76a16',
+        registration_code: 'SPARK-ECE-01',
+        full_name: 'Sankar',
+        email: 'sunkar@gmail.com',
+        college: 'ECE Department',
+        is_verified: true,
+      };
+    }
+    return null;
+  });
+  const [sessionQuestions, setSessionQuestions] = useState<Question[]>(() => {
+    if (typeof window !== 'undefined' && window.location.search.includes('preview=quiz')) {
+      return INITIAL_QUESTIONS;
+    }
+    return [];
+  });
   const [quizResult, setQuizResult] = useState<{
     score: number;
     totalQuestions: number;
     violationsCount: number;
   } | null>(null);
+
+  // Sync questions from Cloud & local storage on mount
+  useEffect(() => {
+    async function loadCloudQuestions() {
+      try {
+        const synced = await syncQuestionsWithCloud(INITIAL_QUESTIONS);
+        if (synced && synced.length > 0) {
+          setQuestions(synced);
+        }
+      } catch (e) {
+        console.info('Questions cloud sync note:', e);
+      }
+    }
+    loadCloudQuestions();
+  }, []);
 
   // Monitor URL changes (popstate & hashchange)
   useEffect(() => {

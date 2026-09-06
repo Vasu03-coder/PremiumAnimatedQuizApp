@@ -15,13 +15,29 @@ import {
   Trash2,
   Sun,
   Moon,
+  Edit3,
+  RotateCcw,
+  Search,
+  Megaphone,
+  Check,
+  X,
+  Sparkles,
+  Lock,
+  Unlock,
+  Eye,
   Clock,
-  UserCheck,
-  UserX,
-  Sparkles
+  UserX
 } from 'lucide-react';
 import type { Question, LiveStudentStatus, ProctoringViolation, QuizSubmission } from '../../types/quiz';
-import { supabase, subscribeToQuizArena, getTechnicalQuizParticipants } from '../../lib/supabase';
+import {
+  supabase,
+  subscribeToQuizArena,
+  getTechnicalQuizParticipants,
+  saveQuestionBankToCloud,
+  broadcastAdminAnnouncement,
+  broadcastResetStudent,
+  broadcastQuizStatus,
+} from '../../lib/supabase';
 
 interface AdminDashboardProps {
   questions: Question[];
@@ -34,7 +50,7 @@ export default function AdminDashboard({
   onUpdateQuestions,
   onLogout,
 }: AdminDashboardProps) {
-  // Theme state: default is 'light' (white theme) as requested
+  // Theme state: default is 'light' (white theme)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (typeof window !== 'undefined') {
       return (localStorage.getItem('spark_admin_theme') as 'light' | 'dark') || 'light';
@@ -42,23 +58,75 @@ export default function AdminDashboard({
     return 'light';
   });
 
-  const [activeTab, setActiveTab] = useState<'leaderboard' | 'proctoring' | 'questions'>('leaderboard');
+  const [activeTab, setActiveTab] = useState<'leaderboard' | 'proctoring' | 'questions'>(() => {
+    if (typeof window !== 'undefined') {
+      if (window.location.hash.includes('questions') || window.location.search.includes('tab=questions')) {
+        return 'questions';
+      }
+      if (window.location.hash.includes('proctoring') || window.location.search.includes('tab=proctoring')) {
+        return 'proctoring';
+      }
+    }
+    return 'leaderboard';
+  });
   const [students, setStudents] = useState<Record<string, LiveStudentStatus>>({});
   const [violations, setViolations] = useState<ProctoringViolation[]>([]);
   const [isConnected, setIsConnected] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
-  const [isAddingQuestion, setIsAddingQuestion] = useState(false);
 
-  // New Question Form State
-  const [newQuestionText, setNewQuestionText] = useState('');
-  const [newOptions, setNewOptions] = useState(['', '', '', '']);
-  const [newCorrectAnswer, setNewCorrectAnswer] = useState(0);
-  const [newCategory, setNewCategory] = useState('ECE Core');
+  // Question Management State
+  const [isAddingQuestion, setIsAddingQuestion] = useState(false);
+  const [editingQuestion, setEditingQuestion] = useState<Question | null>(() => {
+    if (typeof window !== 'undefined' && window.location.search.includes('edit=1')) {
+      return questions[0] || null;
+    }
+    return null;
+  });
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Form State for Add / Edit
+  const [formText, setFormText] = useState(() => {
+    if (typeof window !== 'undefined' && window.location.search.includes('edit=1')) {
+      return questions[0]?.question || '';
+    }
+    return '';
+  });
+  const [formOptions, setFormOptions] = useState(() => {
+    if (typeof window !== 'undefined' && window.location.search.includes('edit=1')) {
+      return [...(questions[0]?.options || ['', '', '', ''])];
+    }
+    return ['', '', '', ''];
+  });
+  const [formCorrectAnswer, setFormCorrectAnswer] = useState(() => {
+    if (typeof window !== 'undefined' && window.location.search.includes('edit=1')) {
+      return questions[0]?.correctAnswer || 0;
+    }
+    return 0;
+  });
+  const [formCategory, setFormCategory] = useState(() => {
+    if (typeof window !== 'undefined' && window.location.search.includes('edit=1')) {
+      return questions[0]?.category || 'ECE Core';
+    }
+    return 'ECE Core';
+  });
+
+  // Search & Filter State for candidates
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'completed' | 'offline'>('all');
+
+  // Admin Broadcast Announcement State
+  const [announcementText, setAnnouncementText] = useState('');
+  const [isQuizLocked, setIsQuizLocked] = useState(false);
 
   const toggleTheme = () => {
     const nextTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(nextTheme);
     localStorage.setItem('spark_admin_theme', nextTheme);
+  };
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4000);
   };
 
   // Load ONLY Technical Quiz registered participants on mount
@@ -80,12 +148,12 @@ export default function AdminDashboard({
             totalQuestions: questions.length,
             score: 0,
             violationsCount: 0,
-            status: 'offline', // Default is offline until they actually login!
+            status: 'offline',
             lastSeen: p.created_at || new Date().toISOString(),
           };
         });
 
-        // Check if any verified completed submissions exist in localStorage
+        // Load any stored completions
         try {
           const savedSubmissions: QuizSubmission[] = JSON.parse(
             localStorage.getItem('spark_quiz_submissions') || '[]'
@@ -94,7 +162,6 @@ export default function AdminDashboard({
             savedSubmissions.forEach((sub) => {
               if (!sub || !sub.participant_email) return;
               const key = sub.participant_email.toLowerCase();
-              // Only apply if the candidate was actually registered for Technical Quiz
               if (initialMap[key]) {
                 initialMap[key] = {
                   ...initialMap[key],
@@ -130,7 +197,6 @@ export default function AdminDashboard({
         if (!payload || !payload.email) return;
         const key = payload.email.toLowerCase();
         setStudents((prev) => {
-          // If this student is in the eligible list, mark them active
           const existing = prev[key] || {
             studentId: payload.studentId || key,
             name: payload.name || 'Candidate',
@@ -215,26 +281,34 @@ export default function AdminDashboard({
     };
   }, [questions.length]);
 
-  // Convert map to sorted leaderboard array (Rank 1, 2, 3...)
-  const leaderboardList = Object.values(students).sort((a, b) => {
-    // 1. Completed or Active first
-    const statusOrder: Record<string, number> = { active: 1, completed: 2, flagged: 3, offline: 4 };
-    const aOrder = statusOrder[a.status] || 5;
-    const bOrder = statusOrder[b.status] || 5;
+  // Filtered and sorted leaderboard array
+  const leaderboardList = Object.values(students)
+    .filter((s) => {
+      // Status filter
+      if (statusFilter !== 'all' && s.status !== statusFilter) return false;
+      // Search query
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        return (
+          s.name.toLowerCase().includes(q) ||
+          s.email.toLowerCase().includes(q) ||
+          s.college.toLowerCase().includes(q)
+        );
+      }
+      return true;
+    })
+    .sort((a, b) => {
+      const statusOrder: Record<string, number> = { active: 1, completed: 2, flagged: 3, offline: 4 };
+      const aOrder = statusOrder[a.status] || 5;
+      const bOrder = statusOrder[b.status] || 5;
+      if (b.score !== a.score) return b.score - a.score;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return a.name.localeCompare(b.name);
+    });
 
-    // 2. Highest score first if taken
-    if (b.score !== a.score) return b.score - a.score;
-    // 3. Status
-    if (aOrder !== bOrder) return aOrder - bOrder;
-    // 4. Name alphabetical
-    return a.name.localeCompare(b.name);
-  });
-
-  // Calculate strict counts
-  const totalEligible = leaderboardList.length;
+  const totalEligible = Object.keys(students).length;
   const activeCount = Object.values(students).filter((s) => s.status === 'active').length;
   const completedCount = Object.values(students).filter((s) => s.status === 'completed').length;
-  const offlineCount = Object.values(students).filter((s) => s.status === 'offline').length;
 
   // CSV Export
   const handleExportCSV = () => {
@@ -261,37 +335,142 @@ export default function AdminDashboard({
     document.body.removeChild(link);
   };
 
-  // Add Question Handler
-  const handleAddQuestion = (e: React.FormEvent) => {
+  // Reset Student Attempt (Admin Control)
+  const handleResetStudent = (studentEmail: string) => {
+    if (!window.confirm(`Reset test session for ${studentEmail}? The student can retake the quiz.`)) {
+      return;
+    }
+
+    const key = studentEmail.toLowerCase();
+    setStudents((prev) => {
+      if (!prev[key]) return prev;
+      return {
+        ...prev,
+        [key]: {
+          ...prev[key],
+          score: 0,
+          currentQuestion: 0,
+          violationsCount: 0,
+          status: 'offline',
+          completedAt: undefined,
+        },
+      };
+    });
+
+    // Remove from local storage submissions
+    try {
+      const existing: QuizSubmission[] = JSON.parse(
+        localStorage.getItem('spark_quiz_submissions') || '[]'
+      );
+      const filtered = existing.filter((sub) => sub.participant_email.toLowerCase() !== key);
+      localStorage.setItem('spark_quiz_submissions', JSON.stringify(filtered));
+    } catch (e) {
+      console.error(e);
+    }
+
+    // Broadcast reset event so if student has page open, it resets
+    broadcastResetStudent(studentEmail);
+    showToast(`Session reset for ${studentEmail}. Candidate can now re-test.`);
+  };
+
+  // Toggle Quiz Lock (Admin Control)
+  const handleToggleQuizLock = () => {
+    const nextState = !isQuizLocked;
+    setIsQuizLocked(nextState);
+    broadcastQuizStatus(!nextState);
+    showToast(nextState ? 'Quiz session paused for all students.' : 'Quiz session unlocked.');
+  };
+
+  // Send Admin Announcement Broadcast
+  const handleSendAnnouncement = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newQuestionText.trim()) return;
+    if (!announcementText.trim()) return;
 
-    const createdQ: Question = {
-      id: Date.now(),
-      question: newQuestionText,
-      options: [...newOptions],
-      correctAnswer: newCorrectAnswer,
-      category: newCategory,
-      points: 1,
-    };
+    broadcastAdminAnnouncement(announcementText.trim());
+    showToast('Announcement broadcasted to all active participants!');
+    setAnnouncementText('');
+  };
 
-    onUpdateQuestions([...questions, createdQ]);
+  // Open Edit Modal for a question
+  const handleOpenEditQuestion = (q: Question) => {
+    setEditingQuestion(q);
+    setFormText(q.question);
+    setFormOptions([...q.options]);
+    setFormCorrectAnswer(q.correctAnswer);
+    setFormCategory(q.category || 'ECE Core');
     setIsAddingQuestion(false);
-    setNewQuestionText('');
-    setNewOptions(['', '', '', '']);
   };
 
-  const handleDeleteQuestion = (id: number | string) => {
-    onUpdateQuestions(questions.filter((q) => q.id !== id));
+  // Open Add Modal
+  const handleOpenAddQuestion = () => {
+    setEditingQuestion(null);
+    setFormText('');
+    setFormOptions(['', '', '', '']);
+    setFormCorrectAnswer(0);
+    setFormCategory('ECE Core');
+    setIsAddingQuestion(true);
   };
 
-  // Theme Styles Tokens
+  // Save / Update Question (both Local and Cloud sync)
+  const handleSaveQuestion = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formText.trim()) return;
+
+    let updatedList: Question[];
+
+    if (editingQuestion) {
+      // Update existing
+      updatedList = questions.map((q) =>
+        q.id === editingQuestion.id
+          ? {
+              ...q,
+              question: formText,
+              options: [...formOptions],
+              correctAnswer: formCorrectAnswer,
+              category: formCategory,
+            }
+          : q
+      );
+      showToast(`Question #${editingQuestion.id} updated and synced to cloud!`);
+    } else {
+      // Add new
+      const newQ: Question = {
+        id: Date.now(),
+        question: formText,
+        options: [...formOptions],
+        correctAnswer: formCorrectAnswer,
+        category: formCategory,
+        points: 1,
+      };
+      updatedList = [...questions, newQ];
+      showToast('New question added and synced to cloud!');
+    }
+
+    onUpdateQuestions(updatedList);
+    await saveQuestionBankToCloud(updatedList);
+
+    // Reset Form
+    setIsAddingQuestion(false);
+    setEditingQuestion(null);
+  };
+
+  // Delete Question
+  const handleDeleteQuestion = async (id: number | string) => {
+    if (!window.confirm('Delete this question from question bank?')) return;
+
+    const updatedList = questions.filter((q) => q.id !== id);
+    onUpdateQuestions(updatedList);
+    await saveQuestionBankToCloud(updatedList);
+    showToast('Question deleted successfully.');
+  };
+
+  // Theme Tokens
   const isLight = theme === 'light';
   const containerClass = isLight
     ? 'bg-slate-50 text-slate-900 min-h-screen'
     : 'bg-[#0A101D] text-slate-100 min-h-screen';
   const cardClass = isLight
-    ? 'bg-white border border-slate-200/80 shadow-sm shadow-slate-100'
+    ? 'bg-white border border-slate-200/90 shadow-sm shadow-slate-100'
     : 'bg-[#111A2E] border border-white/10 shadow-lg';
   const headerClass = isLight
     ? 'bg-white border-b border-slate-200'
@@ -304,8 +483,23 @@ export default function AdminDashboard({
 
   return (
     <div className={containerClass}>
-      {/* Top Header Bar */}
-      <header className={`${headerClass} sticky top-0 z-40 px-4 sm:px-8 py-4 transition-colors duration-200`}>
+      {/* Toast Notification Banner */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            className="fixed top-5 right-5 z-50 px-4 py-3 rounded-xl bg-emerald-600 text-white text-xs font-semibold shadow-xl flex items-center gap-2"
+          >
+            <Check size={16} />
+            <span>{toastMessage}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Top Header */}
+      <header className={`${headerClass} sticky top-0 z-40 px-4 sm:px-8 py-3.5 transition-colors duration-200`}>
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5 mb-1">
@@ -313,7 +507,9 @@ export default function AdminDashboard({
                 Technical Quiz Portal
               </span>
               <span className="text-xs font-mono text-slate-400 flex items-center gap-1.5">
-                <span className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+                <span
+                  className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}
+                />
                 {isConnected ? 'Realtime Connected' : 'Connecting...'}
               </span>
             </div>
@@ -322,26 +518,42 @@ export default function AdminDashboard({
             </h1>
           </div>
 
-          <div className="flex items-center gap-3 w-full md:w-auto justify-between md:justify-end">
-            {/* Theme Toggle Button (Light / Dark) */}
+          <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-between md:justify-end">
+            {/* Quiz Pause / Unlock Toggle */}
+            <button
+              type="button"
+              onClick={handleToggleQuizLock}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-all cursor-pointer ${
+                isQuizLocked
+                  ? 'bg-amber-50 border-amber-300 text-amber-800'
+                  : isLight
+                  ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
+                  : 'bg-[#162238] border-white/15 text-slate-200'
+              }`}
+              title={isQuizLocked ? 'Click to Unlock Quiz' : 'Click to Pause Quiz'}
+            >
+              {isQuizLocked ? <Lock size={13} className="text-amber-600" /> : <Unlock size={13} />}
+              <span>{isQuizLocked ? 'Quiz Paused' : 'Quiz Active'}</span>
+            </button>
+
+            {/* Theme Toggle Button */}
             <button
               type="button"
               onClick={toggleTheme}
-              className={`px-3 py-2 rounded-lg text-xs font-medium border flex items-center gap-2 transition-all cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-all cursor-pointer ${
                 isLight
                   ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
                   : 'bg-[#162238] border-white/15 text-slate-200 hover:bg-[#1E2E4A]'
               }`}
-              title="Toggle Light / Dark Mode"
             >
               {isLight ? (
                 <>
-                  <Moon size={14} className="text-indigo-600" />
+                  <Moon size={13} className="text-indigo-600" />
                   <span>Dark Mode</span>
                 </>
               ) : (
                 <>
-                  <Sun size={14} className="text-amber-400" />
+                  <Sun size={13} className="text-amber-400" />
                   <span>Light Mode</span>
                 </>
               )}
@@ -350,22 +562,22 @@ export default function AdminDashboard({
             <button
               type="button"
               onClick={handleExportCSV}
-              className={`px-3.5 py-2 rounded-lg text-xs font-medium border flex items-center gap-2 transition-all cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-all cursor-pointer ${
                 isLight
                   ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
                   : 'bg-[#162238] border-white/15 text-slate-200 hover:bg-[#1E2E4A]'
               }`}
             >
-              <Download size={14} />
+              <Download size={13} />
               <span>Export CSV</span>
             </button>
 
             <button
               type="button"
               onClick={onLogout}
-              className="px-3.5 py-2 rounded-lg text-xs font-medium bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-all flex items-center gap-1.5 cursor-pointer font-sans"
+              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-all flex items-center gap-1.5 cursor-pointer font-sans"
             >
-              <LogOut size={14} />
+              <LogOut size={13} />
               <span>Exit Admin</span>
             </button>
           </div>
@@ -373,16 +585,15 @@ export default function AdminDashboard({
       </header>
 
       {/* Main Container */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-8 py-8">
-        {/* KPI Metric Cards */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          {/* Metric 1: Total Registered */}
-          <div className={`${cardClass} rounded-xl p-5 transition-colors duration-200`}>
-            <div className="flex items-center justify-between text-xs font-mono mb-2 text-slate-400">
+      <main className="max-w-7xl mx-auto px-4 sm:px-8 py-6">
+        {/* KPI Metrics */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          <div className={`${cardClass} rounded-xl p-4 transition-colors duration-200`}>
+            <div className="flex items-center justify-between text-xs font-mono mb-1.5 text-slate-400">
               <span className="uppercase tracking-wider">Eligible Candidates</span>
-              <Users size={16} className="text-indigo-500" />
+              <Users size={15} className="text-indigo-500" />
             </div>
-            <div className={`text-3xl font-bold font-mono ${textPrimary}`}>
+            <div className={`text-2xl sm:text-3xl font-bold font-mono ${textPrimary}`}>
               {totalEligible}
             </div>
             <div className="text-[11px] text-slate-400 mt-1 font-mono">
@@ -390,13 +601,12 @@ export default function AdminDashboard({
             </div>
           </div>
 
-          {/* Metric 2: Active Candidates (Real-time online now) */}
-          <div className={`${cardClass} rounded-xl p-5 transition-colors duration-200`}>
-            <div className="flex items-center justify-between text-xs font-mono mb-2 text-slate-400">
+          <div className={`${cardClass} rounded-xl p-4 transition-colors duration-200`}>
+            <div className="flex items-center justify-between text-xs font-mono mb-1.5 text-slate-400">
               <span className="uppercase tracking-wider">Online Right Now</span>
-              <Radio size={16} className={activeCount > 0 ? 'text-emerald-500 animate-pulse' : 'text-slate-400'} />
+              <Radio size={15} className={activeCount > 0 ? 'text-emerald-500 animate-pulse' : 'text-slate-400'} />
             </div>
-            <div className="text-3xl font-bold font-mono text-emerald-600">
+            <div className="text-2xl sm:text-3xl font-bold font-mono text-emerald-600">
               {activeCount}
             </div>
             <div className="text-[11px] text-slate-400 mt-1 font-mono">
@@ -404,13 +614,12 @@ export default function AdminDashboard({
             </div>
           </div>
 
-          {/* Metric 3: Completed */}
-          <div className={`${cardClass} rounded-xl p-5 transition-colors duration-200`}>
-            <div className="flex items-center justify-between text-xs font-mono mb-2 text-slate-400">
+          <div className={`${cardClass} rounded-xl p-4 transition-colors duration-200`}>
+            <div className="flex items-center justify-between text-xs font-mono mb-1.5 text-slate-400">
               <span className="uppercase tracking-wider">Completed Test</span>
-              <CheckCircle2 size={16} className="text-blue-500" />
+              <CheckCircle2 size={15} className="text-blue-500" />
             </div>
-            <div className="text-3xl font-bold font-mono text-blue-600">
+            <div className="text-2xl sm:text-3xl font-bold font-mono text-blue-600">
               {completedCount}
             </div>
             <div className="text-[11px] text-slate-400 mt-1 font-mono">
@@ -418,13 +627,12 @@ export default function AdminDashboard({
             </div>
           </div>
 
-          {/* Metric 4: Proctoring Flags */}
-          <div className={`${cardClass} rounded-xl p-5 transition-colors duration-200`}>
-            <div className="flex items-center justify-between text-xs font-mono mb-2 text-slate-400">
+          <div className={`${cardClass} rounded-xl p-4 transition-colors duration-200`}>
+            <div className="flex items-center justify-between text-xs font-mono mb-1.5 text-slate-400">
               <span className="uppercase tracking-wider">Proctoring Alerts</span>
-              <ShieldAlert size={16} className="text-amber-500" />
+              <ShieldAlert size={15} className="text-amber-500" />
             </div>
-            <div className="text-3xl font-bold font-mono text-amber-600">
+            <div className="text-2xl sm:text-3xl font-bold font-mono text-amber-600">
               {violations.length}
             </div>
             <div className="text-[11px] text-slate-400 mt-1 font-mono">
@@ -433,7 +641,30 @@ export default function AdminDashboard({
           </div>
         </div>
 
-        {/* Tab Switcher */}
+        {/* Live Broadcast Control Bar */}
+        <div className={`${cardClass} rounded-xl p-3.5 mb-6 flex flex-col sm:flex-row items-center justify-between gap-3`}>
+          <div className="flex items-center gap-2 text-xs font-semibold text-indigo-600 shrink-0">
+            <Megaphone size={16} />
+            <span>Broadcast Live Message to Students:</span>
+          </div>
+          <form onSubmit={handleSendAnnouncement} className="flex items-center gap-2 w-full sm:w-auto flex-1 max-w-xl">
+            <input
+              type="text"
+              value={announcementText}
+              onChange={(e) => setAnnouncementText(e.target.value)}
+              placeholder="e.g. 5 minutes remaining! Please review your answers."
+              className={`w-full rounded-lg px-3 py-1.5 text-xs ${inputClass}`}
+            />
+            <button
+              type="submit"
+              className="px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 cursor-pointer font-sans shrink-0"
+            >
+              Send
+            </button>
+          </form>
+        </div>
+
+        {/* Tab Navigation */}
         <div className="flex items-center gap-2 mb-6 border-b border-slate-200 pb-3 overflow-x-auto">
           <button
             type="button"
@@ -484,32 +715,41 @@ export default function AdminDashboard({
         {/* TAB 1: Live Standings & Candidates */}
         {activeTab === 'leaderboard' && (
           <div className={`${cardClass} rounded-xl p-6 transition-colors duration-200`}>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 mb-6">
+            {/* Search & Filter Header */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6">
               <div>
                 <h2 className={`text-base font-bold ${textPrimary} flex items-center gap-2`}>
                   <Flame className="text-amber-500" size={18} />
                   Technical Quiz Candidate Standings
                 </h2>
                 <p className={`text-xs ${textMuted} mt-0.5`}>
-                  Real-time scores, presence indicators, and live rank adjustments
+                  Real-time presence, scores, and candidate management
                 </p>
               </div>
 
-              <div className="flex items-center gap-2 text-xs font-mono">
-                <span className="flex items-center gap-1 text-emerald-600">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  Online
-                </span>
-                <span className="text-slate-300">•</span>
-                <span className="flex items-center gap-1 text-blue-600">
-                  <span className="w-2 h-2 rounded-full bg-blue-500" />
-                  Completed
-                </span>
-                <span className="text-slate-300">•</span>
-                <span className="flex items-center gap-1 text-slate-400">
-                  <span className="w-2 h-2 rounded-full bg-slate-300" />
-                  Yet to Login
-                </span>
+              {/* Search & Filter bar */}
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                <div className="relative flex-1 sm:w-56">
+                  <Search size={13} className="absolute left-2.5 top-2.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search candidate..."
+                    className={`w-full rounded-lg pl-8 pr-3 py-1.5 text-xs ${inputClass}`}
+                  />
+                </div>
+
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value as any)}
+                  className={`rounded-lg px-2.5 py-1.5 text-xs ${inputClass}`}
+                >
+                  <option value="all">All Status</option>
+                  <option value="active">Online (Taking Quiz)</option>
+                  <option value="completed">Completed</option>
+                  <option value="offline">Yet to Login</option>
+                </select>
               </div>
             </div>
 
@@ -521,7 +761,7 @@ export default function AdminDashboard({
             ) : leaderboardList.length === 0 ? (
               <div className="text-center py-16 text-slate-400">
                 <Users size={36} className="mx-auto mb-2 opacity-30" />
-                <p className="text-sm">No Technical Quiz registered candidates found.</p>
+                <p className="text-sm">No candidates matching the criteria.</p>
               </div>
             ) : (
               <div className="space-y-2.5">
@@ -530,7 +770,6 @@ export default function AdminDashboard({
                     const rank = index + 1;
                     const isOnline = student.status === 'active';
                     const isCompleted = student.status === 'completed';
-                    const isOffline = student.status === 'offline';
 
                     let statusBadge = (
                       <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200 flex items-center gap-1">
@@ -572,7 +811,6 @@ export default function AdminDashboard({
                         }`}
                       >
                         <div className="flex items-center gap-3.5 flex-1">
-                          {/* Rank Pill */}
                           <div
                             className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono font-bold text-xs shrink-0 ${
                               rank === 1
@@ -608,8 +846,8 @@ export default function AdminDashboard({
                           </div>
                         </div>
 
-                        {/* Right: Score & Progress */}
-                        <div className="flex items-center gap-6 w-full sm:w-auto justify-between sm:justify-end">
+                        {/* Right: Score, Progress, and Reset Control */}
+                        <div className="flex items-center gap-5 w-full sm:w-auto justify-between sm:justify-end">
                           <div className="text-left sm:text-right">
                             <div className="text-[10px] font-mono text-slate-400 uppercase">Progress</div>
                             <div className={`text-xs font-mono font-medium ${isOnline ? 'text-emerald-600' : textMuted}`}>
@@ -617,13 +855,23 @@ export default function AdminDashboard({
                             </div>
                           </div>
 
-                          <div className="text-right min-w-[70px]">
+                          <div className="text-right min-w-[65px]">
                             <div className="text-[10px] font-mono text-slate-400 uppercase">Score</div>
                             <div className={`text-xl font-mono font-bold ${textPrimary}`}>
                               {student.score}
                               <span className="text-xs font-normal text-slate-400"> pts</span>
                             </div>
                           </div>
+
+                          {/* Admin Reset Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleResetStudent(student.email)}
+                            className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-500 hover:text-indigo-600 transition-colors cursor-pointer"
+                            title="Reset candidate session to allow re-test"
+                          >
+                            <RotateCcw size={14} />
+                          </button>
                         </div>
                       </motion.div>
                     );
@@ -675,127 +923,239 @@ export default function AdminDashboard({
           </div>
         )}
 
-        {/* TAB 3: Question Bank */}
+        {/* TAB 3: Question Bank - 2-COLUMN RESPONSIVE GRID & EDIT MODAL */}
         {activeTab === 'questions' && (
           <div className={`${cardClass} rounded-xl p-6 transition-colors duration-200`}>
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
               <div>
-                <h2 className={`text-base font-bold ${textPrimary}`}>Quiz Question Bank</h2>
+                <h2 className={`text-base font-bold ${textPrimary}`}>Quiz Question Bank (2-Column Grid)</h2>
                 <p className={`text-xs ${textMuted}`}>
-                  View, add, and manage questions distributed to candidates
+                  Review, edit, add, or delete questions. Edits are synchronized directly with cloud storage.
                 </p>
               </div>
 
               <button
                 type="button"
-                onClick={() => setIsAddingQuestion(!isAddingQuestion)}
+                onClick={handleOpenAddQuestion}
                 className="px-3.5 py-2 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-all flex items-center gap-1.5 cursor-pointer font-sans shadow-sm"
               >
                 <Plus size={14} />
-                <span>{isAddingQuestion ? 'Cancel' : 'Add Question'}</span>
+                <span>Add Question</span>
               </button>
             </div>
 
-            {/* Add Question Form */}
-            {isAddingQuestion && (
-              <form onSubmit={handleAddQuestion} className="mb-6 p-5 rounded-xl border border-indigo-200 bg-indigo-50/20 space-y-4">
-                <h3 className="text-xs font-mono font-bold text-indigo-700 uppercase">New Technical Question</h3>
-
-                <div>
-                  <label className="block text-xs font-mono text-slate-500 uppercase mb-1">Question Prompt</label>
-                  <textarea
-                    required
-                    rows={2}
-                    value={newQuestionText}
-                    onChange={(e) => setNewQuestionText(e.target.value)}
-                    placeholder="e.g. Which logic family offers the lowest power consumption?"
-                    className={`w-full rounded-lg p-3 text-xs ${inputClass}`}
-                  />
+            {/* Add / Edit Question Modal Drawer */}
+            {(isAddingQuestion || editingQuestion) && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-8 p-5 sm:p-6 rounded-2xl border-2 border-indigo-500/40 bg-indigo-50/30 shadow-lg space-y-4"
+              >
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-mono font-bold text-indigo-700 uppercase flex items-center gap-2">
+                    <Edit3 size={15} />
+                    {editingQuestion ? `Edit Question #${editingQuestion.id}` : 'Create New Technical Question'}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddingQuestion(false);
+                      setEditingQuestion(null);
+                    }}
+                    className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <X size={16} />
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {newOptions.map((opt, i) => (
-                    <div key={i}>
+                <form onSubmit={handleSaveQuestion} className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="sm:col-span-2">
                       <label className="block text-xs font-mono text-slate-500 uppercase mb-1">
-                        Option {String.fromCharCode(65 + i)} {newCorrectAnswer === i && '(Correct)'}
+                        Question Prompt
                       </label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="radio"
-                          name="correctAnswer"
-                          checked={newCorrectAnswer === i}
-                          onChange={() => setNewCorrectAnswer(i)}
-                          className="text-indigo-600"
-                        />
+                      <textarea
+                        required
+                        rows={2}
+                        value={formText}
+                        onChange={(e) => setFormText(e.target.value)}
+                        placeholder="e.g. In Boolean algebra, what is the value of A + A'B?"
+                        className={`w-full rounded-lg p-3 text-xs ${inputClass}`}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-mono text-slate-500 uppercase mb-1">
+                        Category / Subject
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={formCategory}
+                        onChange={(e) => setFormCategory(e.target.value)}
+                        placeholder="e.g. Semiconductors"
+                        className={`w-full rounded-lg p-3 text-xs ${inputClass}`}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {formOptions.map((opt, i) => (
+                      <div key={i} className="p-2.5 rounded-lg border border-slate-200 bg-white">
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[11px] font-mono text-slate-500 uppercase">
+                            Option {String.fromCharCode(65 + i)}
+                          </label>
+                          <label className="flex items-center gap-1 text-[11px] font-mono text-indigo-600 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="formCorrectRadio"
+                              checked={formCorrectAnswer === i}
+                              onChange={() => setFormCorrectAnswer(i)}
+                              className="text-indigo-600"
+                            />
+                            <span>{formCorrectAnswer === i ? 'Correct Answer' : 'Set Correct'}</span>
+                          </label>
+                        </div>
                         <input
                           type="text"
                           required
                           value={opt}
                           onChange={(e) => {
-                            const updated = [...newOptions];
+                            const updated = [...formOptions];
                             updated[i] = e.target.value;
-                            setNewOptions(updated);
+                            setFormOptions(updated);
                           }}
-                          placeholder={`Option ${String.fromCharCode(65 + i)}`}
-                          className={`w-full rounded-lg px-3 py-1.5 text-xs ${inputClass}`}
+                          placeholder={`Option ${String.fromCharCode(65 + i)} text`}
+                          className={`w-full rounded-md px-2.5 py-1.5 text-xs ${inputClass}`}
                         />
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
 
-                <div className="flex justify-end pt-2">
-                  <button
-                    type="submit"
-                    className="px-4 py-2 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 cursor-pointer font-sans"
-                  >
-                    Save Question
-                  </button>
-                </div>
-              </form>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAddingQuestion(false);
+                        setEditingQuestion(null);
+                      }}
+                      className="px-4 py-2 rounded-lg text-xs font-medium border border-slate-300 text-slate-600 hover:bg-slate-100 cursor-pointer font-sans"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      className="px-5 py-2 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm cursor-pointer font-sans flex items-center gap-1.5"
+                    >
+                      <Check size={14} />
+                      <span>{editingQuestion ? 'Save & Sync Changes' : 'Create & Sync Question'}</span>
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
             )}
 
-            {/* Question List */}
-            <div className="space-y-2.5">
+            {/* 2-COLUMN RESPONSIVE GRID FOR QUESTION CARDS */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {questions.map((q, idx) => (
                 <div
                   key={q.id}
-                  className={`p-4 rounded-xl border flex flex-col md:flex-row items-start md:items-center justify-between gap-4 ${
-                    isLight ? 'bg-slate-50/50 border-slate-200' : 'bg-[#151F36] border-white/10'
+                  className={`p-5 rounded-2xl border flex flex-col justify-between transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 ${
+                    isLight
+                      ? 'bg-white border-slate-200/90 hover:border-indigo-300 shadow-xs'
+                      : 'bg-[#141E34] border-white/10 hover:border-cyan-500/40 shadow-md'
                   }`}
                 >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-mono text-xs font-bold text-indigo-600">Q{idx + 1}.</span>
-                      <span className="text-[11px] font-mono text-slate-500 bg-slate-200/60 px-2 py-0.5 rounded">
-                        {q.category || 'ECE'}
-                      </span>
-                    </div>
-                    <p className={`text-xs font-medium ${textPrimary} mb-2`}>{q.question}</p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 text-[11px]">
-                      {q.options.map((opt, oIdx) => (
-                        <div
-                          key={oIdx}
-                          className={`px-2 py-1 rounded ${
-                            oIdx === q.correctAnswer
-                              ? 'bg-emerald-50 text-emerald-700 font-semibold border border-emerald-200'
-                              : textMuted
-                          }`}
+                  <div>
+                    {/* Card Header with Question Number, Category, and Action Buttons */}
+                    <div className="flex items-center justify-between gap-2 mb-3 pb-3 border-b border-slate-100 dark:border-white/10">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-1 rounded-lg border border-indigo-200/60 dark:border-indigo-800/60">
+                          Q{idx + 1 < 10 ? `0${idx + 1}` : idx + 1}
+                        </span>
+                        <span className="text-[11px] font-mono font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-white/5 px-2.5 py-1 rounded-lg border border-slate-200/70 dark:border-white/10">
+                          {q.category || 'ECE Core'}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        {/* Edit Button with Icon and Label */}
+                        <button
+                          type="button"
+                          onClick={() => handleOpenEditQuestion(q)}
+                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 border border-indigo-200/80 dark:border-indigo-800/60 transition-colors cursor-pointer"
+                          title="Edit Question Details"
                         >
-                          {String.fromCharCode(65 + oIdx)}. {opt}
-                        </div>
-                      ))}
+                          <Edit3 size={13} />
+                          <span>Edit</span>
+                        </button>
+                        {/* Delete Button */}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteQuestion(q.id)}
+                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
+                          title="Delete Question"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Question Prompt */}
+                    <h4 className={`text-sm font-semibold ${textPrimary} leading-relaxed mb-4`}>
+                      {q.question}
+                    </h4>
+
+                    {/* Options 4 items */}
+                    <div className="space-y-2 text-xs mb-4">
+                      {q.options.map((opt, oIdx) => {
+                        const isCorrect = oIdx === q.correctAnswer;
+                        return (
+                          <div
+                            key={oIdx}
+                            className={`px-3 py-2 rounded-xl flex items-center justify-between text-xs transition-all ${
+                              isCorrect
+                                ? isLight
+                                  ? 'bg-emerald-50/90 text-emerald-900 font-semibold border-2 border-emerald-300 shadow-xs'
+                                  : 'bg-emerald-950/40 text-emerald-300 font-semibold border-2 border-emerald-600 shadow-xs'
+                                : isLight
+                                ? 'text-slate-700 bg-slate-50/80 border border-slate-200/80'
+                                : 'text-slate-300 bg-white/5 border border-white/5'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 truncate mr-2">
+                              <span
+                                className={`w-5 h-5 rounded-full flex items-center justify-center font-mono text-[10px] font-bold shrink-0 ${
+                                  isCorrect
+                                    ? 'bg-emerald-600 text-white'
+                                    : 'bg-slate-200 dark:bg-white/10 text-slate-600 dark:text-slate-400'
+                                }`}
+                              >
+                                {String.fromCharCode(65 + oIdx)}
+                              </span>
+                              <span className="truncate">{opt}</span>
+                            </div>
+
+                            {isCorrect && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5 rounded-md shrink-0">
+                                <Check size={11} strokeWidth={3} />
+                                Correct Answer
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
 
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteQuestion(q.id)}
-                    className="text-slate-400 hover:text-red-500 p-1.5 rounded-lg transition-colors"
-                    title="Delete Question"
-                  >
-                    <Trash2 size={15} />
-                  </button>
+                  {/* Card Bottom Meta */}
+                  <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-3 border-t border-slate-100 dark:border-white/10">
+                    <span>1 Point • Single Choice</span>
+                    <span className="inline-flex items-center gap-1 text-indigo-500 font-medium">
+                      <Sparkles size={11} />
+                      Cloud Synced
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>

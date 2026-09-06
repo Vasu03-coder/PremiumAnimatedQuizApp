@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
-import type { StudentProfile, LiveStudentStatus, ProctoringViolation, QuizSubmission } from '../types/quiz';
+import type { Question, StudentProfile, LiveStudentStatus, ProctoringViolation, QuizSubmission } from '../types/quiz';
 
 export const SUPABASE_URL = 'https://ickymxuqprfbekxumpop.supabase.co';
 export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlja3lteHVxcHJmYmVreHVtcG9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0NDM0NTYsImV4cCI6MjEwNDAxOTQ1Nn0.E7_i_XCbNJGNFif-uEQnG8d5voIn2DalZUBlXXV_SMU';
@@ -206,6 +206,117 @@ export function broadcastQuizCompleted(submission: QuizSubmission) {
     event: 'quiz_completed',
     payload: submission,
   });
+}
+
+export function broadcastAdminAnnouncement(message: string) {
+  const ch = getOrCreateArenaChannel();
+  return ch.send({
+    type: 'broadcast',
+    event: 'admin_announcement',
+    payload: { message, timestamp: new Date().toLocaleTimeString() },
+  });
+}
+
+export function broadcastResetStudent(studentEmail: string) {
+  const ch = getOrCreateArenaChannel();
+  return ch.send({
+    type: 'broadcast',
+    event: 'reset_student_session',
+    payload: { studentEmail: studentEmail.toLowerCase() },
+  });
+}
+
+export function broadcastQuizStatus(isQuizActive: boolean) {
+  const ch = getOrCreateArenaChannel();
+  return ch.send({
+    type: 'broadcast',
+    event: 'quiz_status_change',
+    payload: { isQuizActive },
+  });
+}
+
+/**
+ * Cloud and Local synchronized question bank helpers
+ */
+export async function syncQuestionsWithCloud(fallbackQuestions: Question[]): Promise<Question[]> {
+  // 1. Try reading from localStorage first if custom edits exist
+  try {
+    const local = localStorage.getItem('spark_quiz_questions');
+    if (local) {
+      const parsed = JSON.parse(local);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (e) {
+    console.error(e);
+  }
+
+  // 2. Try fetching from Supabase quiz_questions
+  try {
+    const { data: cloudQuestions, error } = await supabase
+      .from('quiz_questions')
+      .select('*')
+      .order('id', { ascending: true });
+
+    if (!error && cloudQuestions && cloudQuestions.length > 0) {
+      const mapped: Question[] = cloudQuestions.map((q: any, i: number) => {
+        let optionsArr: string[] = [];
+        let correctIdx = 0;
+        if (Array.isArray(q.options)) {
+          optionsArr = q.options.map((opt: any) =>
+            typeof opt === 'string' ? opt : opt.text || String(opt)
+          );
+          const foundCorrect = q.options.findIndex((opt: any) => typeof opt === 'object' && opt.is_correct);
+          if (foundCorrect !== -1) correctIdx = foundCorrect;
+        } else if (typeof q.options === 'object' && q.options !== null) {
+          optionsArr = Object.values(q.options);
+        }
+        return {
+          id: q.id,
+          question: q.question_text || q.question || `Question ${i + 1}`,
+          options: optionsArr.length >= 2 ? optionsArr : ['Option A', 'Option B', 'Option C', 'Option D'],
+          correctAnswer: correctIdx,
+          category: q.category || 'ECE Core',
+          points: q.points || 1,
+        };
+      });
+      return mapped;
+    }
+  } catch (err) {
+    console.warn('Cloud questions sync note:', err);
+  }
+
+  return fallbackQuestions;
+}
+
+/**
+ * Save updated question bank to both cloud and persistent local cache
+ */
+export async function saveQuestionBankToCloud(questions: Question[]): Promise<void> {
+  // 1. Save to persistent localStorage
+  try {
+    localStorage.setItem('spark_quiz_questions', JSON.stringify(questions));
+  } catch (e) {
+    console.error('Local question cache error:', e);
+  }
+
+  // 2. Try saving to Supabase quiz_questions
+  try {
+    const records = questions.map((q: Question) => ({
+      question_text: q.question,
+      options: q.options.map((text: string, i: number) => ({
+        text,
+        is_correct: i === q.correctAnswer,
+      })),
+      category: q.category || 'ECE Core',
+      points: q.points || 1,
+    }));
+
+    await supabase.from('quiz_questions').upsert(records);
+  } catch (err) {
+    console.info('Supabase cloud questions upsert note:', err);
+  }
 }
 
 /**

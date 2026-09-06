@@ -143,3 +143,78 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 210, 255, 0.4);
 }
+
+/* Authentic High-Tech Claymorphism & Glassmorphism */
+.clay-card-obsidian {
+  background: radial-gradient(120% 120% at 50% 0%, rgba(16, 29, 58, 0.88) 0%, rgba(6, 13, 29, 0.95) 100%);
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 
+    0 24px 60px -12px rgba(0, 0, 0, 0.75),
+    0 0 40px rgba(0, 210, 255, 0.08),
+    inset 0 2px 2px rgba(255, 255, 255, 0.18),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.6);
+}
+
+.clay-button-default {
+  background: linear-gradient(180deg, rgba(20, 36, 70, 0.75) 0%, rgba(10, 19, 39, 0.85) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  box-shadow: 
+    0 8px 22px rgba(0, 0, 0, 0.35),
+    inset 0 1px 2px rgba(255, 255, 255, 0.15),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.35);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.clay-button-default:hover {
+  background: linear-gradient(180deg, rgba(28, 48, 92, 0.85) 0%, rgba(14, 26, 52, 0.9) 100%);
+  border-color: rgba(56, 225, 255, 0.35);
+  box-shadow: 
+    0 12px 28px rgba(0, 0, 0, 0.45),
+    0 0 15px rgba(0, 210, 255, 0.15),
+    inset 0 1px 2px rgba(255, 255, 255, 0.25),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.4);
+}
+
+.clay-button-selected {
+  background: linear-gradient(180deg, rgba(0, 150, 214, 0.22) 0%, rgba(6, 30, 60, 0.5) 100%);
+  border: 1.5px solid #00D2FF;
+  box-shadow: 
+    0 14px 32px rgba(0, 210, 255, 0.25),
+    0 0 25px rgba(0, 210, 255, 0.2),
+    inset 0 2px 4px rgba(255, 255, 255, 0.35),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.5);
+}
+
+.clay-badge {
+  box-shadow: 
+    0 4px 10px rgba(0, 0, 0, 0.3),
+    inset 0 1px 1px rgba(255, 255, 255, 0.25),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.clay-badge-active {
+  background: linear-gradient(135deg, #00D2FF 0%, #38E1FF 100%);
+  color: #030712;
+  box-shadow: 
+    0 4px 15px rgba(0, 210, 255, 0.45),
+    inset 0 1px 2px rgba(255, 255, 255, 0.6),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.2);
+}
+
+.clay-cta {
+  background: linear-gradient(135deg, #00C6FF 0%, #0072FF 50%, #7058FF 100%);
+  box-shadow: 
+    0 10px 30px rgba(0, 150, 255, 0.4),
+    inset 0 1.5px 2px rgba(255, 255, 255, 0.45),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.clay-cta:hover {
+  box-shadow: 
+    0 14px 36px rgba(0, 150, 255, 0.55),
+    0 0 20px rgba(0, 210, 255, 0.3),
+    inset 0 2px 2px rgba(255, 255, 255, 0.6),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.3);
+}
