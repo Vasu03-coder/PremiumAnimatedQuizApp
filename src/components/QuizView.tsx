@@ -4,14 +4,12 @@ import {
   ShieldAlert,
   ChevronRight,
   AlertTriangle,
-  Radio,
-  Cpu,
-  Sparkles,
-  Bell,
   Lock,
   Clock,
   ShieldCheck,
-  Check
+  Check,
+  Bell,
+  CornerDownLeft
 } from 'lucide-react';
 import type { Question, StudentProfile, ProctoringViolation } from '../types/quiz';
 import {
@@ -33,8 +31,6 @@ interface QuizViewProps {
 }
 
 const SECONDS_PER_QUESTION = 60;
-const CIRCLE_RADIUS = 26;
-const CIRCLE_CIRCUMFERENCE = 2 * Math.PI * CIRCLE_RADIUS;
 
 export default function QuizView({ student, questions, onCompleteQuiz }: QuizViewProps) {
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -94,7 +90,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
       setPenalizedQuestions((prev) => ({ ...prev, [currentIndex]: true }));
       setViolationsCount((prev) => prev + 1);
       setActiveWarning(
-        `Proctoring Violation Flagged: ${reason}. 0 marks awarded for Question ${currentIndex + 1}.`
+        `Proctoring Warning: ${reason}. 0 marks awarded for Question ${currentIndex + 1}.`
       );
 
       const violation: ProctoringViolation = {
@@ -110,7 +106,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
 
       setTimeout(() => {
         setActiveWarning(null);
-      }, 7000);
+      }, 6000);
     },
     [currentIndex, student]
   );
@@ -122,7 +118,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
     channel.on('broadcast', { event: 'admin_announcement' }, ({ payload }) => {
       if (payload?.message) {
         setAdminBroadcastMsg(payload.message);
-        setTimeout(() => setAdminBroadcastMsg(null), 9000);
+        setTimeout(() => setAdminBroadcastMsg(null), 8000);
       }
     });
 
@@ -154,14 +150,14 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'PrintScreen' || e.keyCode === 44) {
         e.preventDefault();
-        handleCheatAttempt('screenshot', 'Screenshot capture attempt detected');
+        handleCheatAttempt('screenshot', 'Screenshot attempt prevented');
       }
       if (
         (e.metaKey || e.ctrlKey) &&
         e.shiftKey &&
         (e.key === 'S' || e.key === 's' || e.key === '3' || e.key === '4')
       ) {
-        handleCheatAttempt('screenshot', 'Snipping tool shortcut detected');
+        handleCheatAttempt('screenshot', 'Snipping shortcut prevented');
       }
     };
 
@@ -226,51 +222,79 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
     }));
   };
 
-  // Timer Circle Math
-  const strokeDashoffset =
-    CIRCLE_CIRCUMFERENCE - (timeLeft / SECONDS_PER_QUESTION) * CIRCLE_CIRCUMFERENCE;
+  // Keyboard Navigation: keys 1-4, A-D for options, and Enter for Next Question
+  useEffect(() => {
+    const handleQuizKeyboard = (e: KeyboardEvent) => {
+      // Ignore if typing in an input
+      if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
+
+      const key = e.key.toLowerCase();
+      if (key === '1' || key === 'a') {
+        if (currentQ.options[0]) handleSelectOption(0);
+      } else if (key === '2' || key === 'b') {
+        if (currentQ.options[1]) handleSelectOption(1);
+      } else if (key === '3' || key === 'c') {
+        if (currentQ.options[2]) handleSelectOption(2);
+      } else if (key === '4' || key === 'd') {
+        if (currentQ.options[3]) handleSelectOption(3);
+      } else if (e.key === 'Enter') {
+        if (answers[currentIndex] !== undefined) {
+          e.preventDefault();
+          handleNextQuestion();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleQuizKeyboard);
+    return () => window.removeEventListener('keydown', handleQuizKeyboard);
+  }, [answers, currentIndex, currentQ.options, handleNextQuestion]);
+
   const isUrgent = timeLeft <= 15;
   const isMid = timeLeft <= 30 && timeLeft > 15;
-  const timerStrokeColor = isUrgent ? '#EF4444' : isMid ? '#F59E0B' : '#00D2FF';
+
+  // Format candidate initials
+  const initials = (student.full_name || 'Candidate')
+    .split(' ')
+    .filter(Boolean)
+    .map((w) => w[0])
+    .join('')
+    .substring(0, 2)
+    .toUpperCase();
 
   return (
-    <div className="w-full max-w-4xl mx-auto px-4 sm:px-6 py-4 relative">
-      {/* Quiz Paused Overlay (if admin paused session) */}
+    <div className="w-full max-w-3xl mx-auto px-4 py-4 sm:py-6">
+      {/* Quiz Paused Overlay */}
       <AnimatePresence>
         {isQuizPaused && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="absolute inset-0 z-50 rounded-3xl bg-midnight-950/90 backdrop-blur-xl flex flex-col items-center justify-center p-8 text-center"
+            className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center"
           >
-            <div className="w-16 h-16 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center mb-4 shadow-[0_0_30px_rgba(245,158,11,0.3)]">
-              <Lock size={32} />
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mb-4">
+              <Lock size={26} />
             </div>
-            <h3 className="text-2xl font-bold text-white mb-2">Quiz Session Paused</h3>
-            <p className="text-sm text-slate-300 max-w-md">
-              The symposium administrator has temporarily paused the quiz session. Your timer is frozen. The test will resume shortly.
+            <h3 className="text-xl font-semibold text-white mb-2">Quiz Temporarily Paused</h3>
+            <p className="text-sm text-slate-400 max-w-md leading-relaxed">
+              The test session has been paused by the administrator. The timer is currently frozen and will resume shortly.
             </p>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Admin Announcement Banner */}
+      {/* Admin Broadcast Banner */}
       <AnimatePresence>
         {adminBroadcastMsg && (
           <motion.div
-            initial={{ opacity: 0, y: -20, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -20, scale: 0.96 }}
-            className="mb-5 p-4 rounded-2xl bg-indigo-950/85 border border-electric-cyan/40 text-electric-cyan text-sm flex items-center gap-3.5 backdrop-blur-2xl shadow-[0_10px_35px_rgba(0,210,255,0.25)]"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="mb-4 p-3.5 rounded-xl bg-blue-950/70 border border-blue-500/30 text-blue-200 text-sm flex items-center gap-3 backdrop-blur-md"
           >
-            <div className="w-9 h-9 rounded-xl bg-electric-cyan/20 flex items-center justify-center shrink-0 text-electric-cyan">
-              <Bell size={18} className="animate-bounce" />
-            </div>
-            <div className="flex-1 font-medium text-slate-100 leading-snug">
-              <span className="font-bold text-electric-cyan uppercase tracking-wider text-xs block mb-0.5">
-                Admin Announcement
-              </span>
+            <Bell size={18} className="text-blue-400 shrink-0" />
+            <div className="flex-1 text-xs sm:text-sm">
+              <span className="font-semibold text-blue-300 mr-2">Notice:</span>
               {adminBroadcastMsg}
             </div>
           </motion.div>
@@ -281,229 +305,182 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
       <AnimatePresence>
         {activeWarning && (
           <motion.div
-            initial={{ opacity: 0, y: -10, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -10, scale: 0.98 }}
-            className="mb-5 p-4 rounded-2xl bg-red-950/90 border border-red-500/60 text-red-200 text-sm flex items-start gap-3 backdrop-blur-2xl shadow-[0_10px_35px_rgba(239,68,68,0.25)]"
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            className="mb-4 p-3.5 rounded-xl bg-red-950/70 border border-red-500/40 text-red-200 text-xs sm:text-sm flex items-start gap-2.5 backdrop-blur-md"
           >
-            <ShieldAlert size={22} className="text-red-400 shrink-0 mt-0.5 animate-pulse" />
+            <ShieldAlert size={18} className="text-red-400 shrink-0 mt-0.5" />
             <div className="flex-1 font-medium leading-relaxed">{activeWarning}</div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* CLAYMORPHIC + GLASSMORPHIC ASSESSMENT CONSOLE CARD */}
-      <div className="clay-card-obsidian rounded-3xl p-6 sm:p-10 relative overflow-hidden">
-        {/* Subtle Ambient Light Orbs behind content */}
-        <div className="absolute -top-24 right-10 w-72 h-72 bg-electric-cyan/10 rounded-full blur-[100px] pointer-events-none" />
-        <div className="absolute -bottom-24 left-10 w-72 h-72 bg-electric-purple/10 rounded-full blur-[100px] pointer-events-none" />
-
-        {/* Top Header Row: Candidate Info Pill + Prominent Animated Circular Timer */}
-        <div className="flex items-center justify-between gap-4 mb-6 pb-6 border-b border-white/10">
-          {/* Candidate Profile Info */}
-          <div className="flex items-center gap-3.5">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-electric-blue/20 to-electric-purple/20 border border-electric-cyan/30 flex items-center justify-center text-electric-cyan clay-badge">
-              <Cpu size={22} />
-            </div>
-            <div>
-              <div className="text-base font-bold tracking-tight text-white flex items-center gap-2">
-                <span>{student.full_name}</span>
-                <span className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  PROCTORED
-                </span>
-              </div>
-              <div className="text-xs font-mono text-slate-400 mt-0.5">
-                {student.college || 'Engineering College'} • Question {currentIndex + 1} of {questions.length}
-              </div>
-            </div>
-          </div>
-
-          {/* HIGH-PRECISION ANIMATED CIRCULAR COUNTDOWN TIMER */}
-          <div className="flex items-center gap-3">
-            <div className="relative flex items-center justify-center w-20 h-20 shrink-0">
-              {/* Emergency pulsing aura when under 15 seconds */}
-              {isUrgent && (
-                <motion.div
-                  animate={{ scale: [1, 1.25, 1], opacity: [0.7, 0.1, 0.7] }}
-                  transition={{ duration: 1, repeat: Infinity }}
-                  className="absolute inset-0 rounded-full bg-red-500/20 blur-md pointer-events-none"
-                />
-              )}
-
-              <svg className="w-20 h-20 -rotate-90 transform" viewBox="0 0 68 68">
-                {/* Background Ring Track */}
-                <circle
-                  cx="34"
-                  cy="34"
-                  r={CIRCLE_RADIUS}
-                  fill="transparent"
-                  stroke="rgba(255, 255, 255, 0.08)"
-                  strokeWidth="5"
-                />
-                {/* Dynamic Circular Progress Stroke */}
-                <motion.circle
-                  cx="34"
-                  cy="34"
-                  r={CIRCLE_RADIUS}
-                  fill="transparent"
-                  stroke={timerStrokeColor}
-                  strokeWidth="5"
-                  strokeDasharray={CIRCLE_CIRCUMFERENCE}
-                  animate={{ strokeDashoffset }}
-                  transition={{ duration: 0.9, ease: 'linear' }}
-                  strokeLinecap="round"
-                  style={{
-                    filter: isUrgent
-                      ? 'drop-shadow(0 0 8px rgba(239, 68, 68, 0.85))'
-                      : isMid
-                      ? 'drop-shadow(0 0 7px rgba(245, 158, 11, 0.75))'
-                      : 'drop-shadow(0 0 7px rgba(0, 210, 255, 0.7))',
-                  }}
-                />
-              </svg>
-
-              {/* Number and 'SEC' label inside the circular timer */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span
-                  className={`font-mono font-extrabold text-base tracking-tight leading-none transition-colors ${
-                    isUrgent ? 'text-red-400 animate-pulse text-lg' : 'text-white'
-                  }`}
-                >
-                  {timeLeft}
-                </span>
-                <span className="text-[9px] font-mono uppercase tracking-widest text-slate-400 mt-0.5">
-                  SEC
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Liquid Progress Bar with Cyan Glow */}
-        <div className="w-full h-2 bg-black/40 rounded-full overflow-hidden mb-8 border border-white/5 relative">
-          <motion.div
-            className="h-full bg-gradient-to-r from-electric-blue via-electric-cyan to-electric-purple rounded-full"
-            initial={{ width: 0 }}
-            animate={{ width: `${progressPercent}%` }}
-            transition={{ duration: 0.4 }}
-            style={{
-              boxShadow: '0 0 14px rgba(0, 210, 255, 0.7)',
-            }}
+      {/* MAIN PROFESSIONAL ASSESSMENT CARD */}
+      <div className="surface-card rounded-2xl p-6 sm:p-8 relative">
+        {/* Subtle Top Progress Line */}
+        <div className="absolute top-0 left-0 right-0 h-1 bg-slate-800/80 rounded-t-2xl overflow-hidden">
+          <div
+            className="h-full bg-blue-500 transition-all duration-300 ease-out"
+            style={{ width: `${progressPercent}%` }}
           />
         </div>
 
-        {/* Question Text with Animated Entrance */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={currentQ.id}
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -14 }}
-            transition={{ duration: 0.25 }}
-            className="mb-8"
+        {/* Header Bar: Candidate Info + Minimal Timer */}
+        <div className="flex items-center justify-between gap-4 pb-5 mb-6 border-b border-white/[0.08]">
+          {/* Candidate Profile */}
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700/60 flex items-center justify-center font-semibold text-xs text-slate-200 tracking-wide">
+              {initials}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-white">{student.full_name}</span>
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                  Proctored
+                </span>
+              </div>
+              <div className="text-xs text-slate-400 mt-0.5">
+                {student.college || 'Engineering College'}
+              </div>
+            </div>
+          </div>
+
+          {/* Minimalist Professional Pill Timer */}
+          <div
+            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl border transition-colors ${
+              isUrgent
+                ? 'bg-red-500/10 border-red-500/40 text-red-300'
+                : isMid
+                ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+                : 'bg-slate-800/60 border-slate-700/60 text-slate-200'
+            }`}
           >
-            {/* Category Tag and Penalty status */}
-            <div className="flex items-center justify-between gap-2 mb-4">
-              <span className="text-[11px] font-mono uppercase tracking-widest px-3.5 py-1 rounded-full bg-electric-cyan/10 border border-electric-cyan/30 text-electric-cyan flex items-center gap-1.5 clay-badge">
-                <Sparkles size={12} />
+            <Clock size={15} className={isUrgent ? 'text-red-400' : 'text-slate-400'} />
+            <span className="font-mono text-sm font-semibold tracking-tight">
+              {String(Math.floor(timeLeft / 60)).padStart(2, '0')}:{String(timeLeft % 60).padStart(2, '0')}
+            </span>
+            <span className="text-[10px] uppercase font-medium text-slate-400 tracking-wider">
+              left
+            </span>
+          </div>
+        </div>
+
+        {/* Question Metadata & Question Text */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-slate-400">
+                Question {currentIndex + 1} of {questions.length}
+              </span>
+              <span className="text-slate-600">•</span>
+              <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-md bg-slate-800 border border-slate-700/50 text-slate-300">
                 {currentQ.category || 'ECE Core'}
               </span>
-
-              {penalizedQuestions[currentIndex] && (
-                <span className="text-[11px] font-mono px-3 py-1 rounded-full bg-red-500/15 border border-red-500/30 text-red-400 flex items-center gap-1 font-semibold animate-pulse">
-                  <AlertTriangle size={12} />
-                  Flagged: 0 Marks Awarded
-                </span>
-              )}
             </div>
 
-            <h2 className="text-xl sm:text-2xl font-bold text-white leading-relaxed tracking-tight">
-              {currentQ.question}
-            </h2>
-          </motion.div>
-        </AnimatePresence>
+            {penalizedQuestions[currentIndex] && (
+              <span className="text-xs px-2 py-0.5 rounded bg-red-500/10 border border-red-500/30 text-red-400 flex items-center gap-1 font-medium">
+                <AlertTriangle size={12} />
+                Flagged: 0 marks
+              </span>
+            )}
+          </div>
 
-        {/* CLAYMORPHIC OPTIONS LIST */}
-        <div className="space-y-3.5 mb-8">
+          <h2 className="text-lg sm:text-xl font-semibold text-slate-100 leading-snug tracking-tight">
+            {currentQ.question}
+          </h2>
+        </div>
+
+        {/* Clean, Interactive Options List */}
+        <div className="space-y-2.5 mb-8">
           {currentQ.options.map((optionText, optIndex) => {
             const isSelected = answers[currentIndex] === optIndex;
+            const letterLabel = String.fromCharCode(65 + optIndex);
 
             return (
-              <motion.button
+              <div
                 key={optIndex}
-                type="button"
-                whileHover={{ scale: 1.01, y: -1 }}
-                whileTap={{ scale: 0.985 }}
+                role="button"
+                tabIndex={0}
                 onClick={() => handleSelectOption(optIndex)}
-                className={`w-full text-left p-4 sm:p-5 rounded-2xl flex items-center justify-between gap-4 cursor-pointer relative overflow-hidden transition-all duration-200 ${
-                  isSelected ? 'clay-button-selected' : 'clay-button-default'
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    handleSelectOption(optIndex);
+                  }
+                }}
+                className={`w-full text-left p-3.5 sm:p-4 rounded-xl flex items-center justify-between gap-3.5 cursor-pointer outline-none ${
+                  isSelected ? 'option-item-selected' : 'option-item'
                 }`}
               >
-                <div className="flex items-center gap-4 flex-1 z-10">
-                  {/* Claymorphic Option Badge: A, B, C, D */}
+                <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                  {/* Option Badge (A, B, C, D) */}
                   <div
-                    className={`w-10 h-10 rounded-xl flex items-center justify-center font-mono text-xs font-bold transition-all shrink-0 ${
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono text-xs font-semibold shrink-0 transition-colors ${
                       isSelected
-                        ? 'clay-badge-active'
-                        : 'clay-badge bg-white/5 text-slate-300 border border-white/10'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-800/80 text-slate-400 border border-slate-700/60'
                     }`}
                   >
-                    {String.fromCharCode(65 + optIndex)}
+                    {letterLabel}
                   </div>
+
+                  {/* Option Content Text */}
                   <span
-                    className={`text-sm sm:text-base leading-relaxed ${
-                      isSelected ? 'text-white font-medium' : 'text-slate-200'
+                    className={`text-sm sm:text-base leading-relaxed transition-colors ${
+                      isSelected ? 'text-white font-medium' : 'text-slate-300'
                     }`}
                   >
                     {optionText}
                   </span>
                 </div>
 
-                {/* Tactical Selection Indicator (NO answer reveal!) */}
+                {/* Minimal Radio Check Indicator */}
                 <div
-                  className={`w-6 h-6 rounded-full border flex items-center justify-center shrink-0 transition-all z-10 ${
+                  className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition-all ${
                     isSelected
-                      ? 'border-electric-cyan bg-electric-cyan/20 shadow-[0_0_12px_rgba(0,210,255,0.6)]'
-                      : 'border-white/20 bg-black/20'
+                      ? 'border-blue-500 bg-blue-600 text-white'
+                      : 'border-slate-600 bg-transparent'
                   }`}
                 >
-                  {isSelected && (
-                    <motion.div
-                      layoutId="selectedIndicatorDot"
-                      className="w-2.5 h-2.5 rounded-full bg-electric-cyan shadow-[0_0_8px_#00D2FF]"
-                    />
-                  )}
+                  {isSelected && <Check size={12} strokeWidth={3} />}
                 </div>
-              </motion.button>
+              </div>
             );
           })}
         </div>
 
-        {/* Bottom Navigation Row */}
-        <div className="pt-6 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="text-xs text-slate-400 font-mono text-center sm:text-left flex items-center gap-2">
+        {/* Bottom Actions Footer */}
+        <div className="pt-5 border-t border-white/[0.08] flex flex-col sm:flex-row items-center justify-between gap-3.5">
+          {/* Subtle Shortcut Hint */}
+          <div className="text-xs text-slate-400 flex items-center gap-1.5 order-2 sm:order-1">
             <ShieldCheck size={14} className="text-emerald-400 shrink-0" />
-            <span>Select an option before continuing. Selection locks upon advancing.</span>
+            <span>
+              Press <kbd className="font-mono text-[11px] px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">1-4</kbd> or <kbd className="font-mono text-[11px] px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">A-D</kbd> to select
+            </span>
           </div>
 
-          <motion.button
+          {/* Next / Submit Button */}
+          <button
             type="button"
-            whileHover={{ scale: isAnswerSelected ? 1.02 : 1 }}
-            whileTap={{ scale: isAnswerSelected ? 0.98 : 1 }}
             disabled={!isAnswerSelected}
             onClick={handleNextQuestion}
-            className={`w-full sm:w-auto px-8 py-3.5 rounded-2xl font-bold text-sm text-midnight-950 flex items-center justify-center gap-2 cursor-pointer transition-all ${
+            className={`w-full sm:w-auto px-6 py-2.5 rounded-xl font-medium text-sm flex items-center justify-center gap-2 cursor-pointer transition-all order-1 sm:order-2 ${
               isAnswerSelected
-                ? 'clay-cta text-midnight-950'
-                : 'bg-white/10 text-slate-400 border border-white/5 opacity-50 cursor-not-allowed'
+                ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm'
+                : 'bg-slate-800/60 text-slate-500 border border-slate-700/40 cursor-not-allowed opacity-60'
             }`}
           >
-            <span>{currentIndex === questions.length - 1 ? 'Submit Final Quiz' : 'Next Question'}</span>
-            <ChevronRight size={18} />
-          </motion.button>
+            <span>{currentIndex === questions.length - 1 ? 'Submit Assessment' : 'Next Question'}</span>
+            <span className="hidden sm:inline-flex items-center gap-0.5 text-[10px] opacity-75 font-mono px-1 py-0.5 rounded bg-black/20 border border-white/10">
+              <CornerDownLeft size={10} /> Enter
+            </span>
+            <ChevronRight size={16} />
+          </button>
         </div>
       </div>
     </div>
   );
 }
+
