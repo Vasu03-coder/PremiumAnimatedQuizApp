@@ -32,187 +32,279 @@ export default function FloatingBackground() {
     window.addEventListener('resize', handleResize);
     window.addEventListener('mousemove', handleMouseMove);
 
-    // Floating digital dust particles
-    const particleCount = 45;
+    // 3D Organic Liquid Glass Blobs Configuration
+    interface LiquidBlob {
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+      baseRadius: number;
+      colorStart: string;
+      colorMid: string;
+      colorEnd: string;
+      rimColor: string;
+      wobbleSpeed1: number;
+      wobbleSpeed2: number;
+      wobbleSpeed3: number;
+      harmonics: number[];
+      phase: number;
+    }
+
+    const blobConfigs = [
+      // Blob 1: Cyan / Electric Blue (Top Left)
+      {
+        xRatio: 0.2,
+        yRatio: 0.25,
+        baseRadius: Math.min(width, height) * 0.22,
+        colorStart: 'rgba(56, 189, 248, 0.65)',
+        colorMid: 'rgba(37, 99, 235, 0.45)',
+        colorEnd: 'rgba(15, 23, 42, 0.1)',
+        rimColor: 'rgba(186, 230, 253, 0.8)',
+      },
+      // Blob 2: Electric Indigo / Purple (Top Right)
+      {
+        xRatio: 0.82,
+        yRatio: 0.3,
+        baseRadius: Math.min(width, height) * 0.24,
+        colorStart: 'rgba(129, 140, 248, 0.6)',
+        colorMid: 'rgba(99, 102, 241, 0.4)',
+        colorEnd: 'rgba(30, 27, 75, 0.1)',
+        rimColor: 'rgba(224, 231, 255, 0.75)',
+      },
+      // Blob 3: Fuchsia / Violet Lava (Bottom Left)
+      {
+        xRatio: 0.18,
+        yRatio: 0.75,
+        baseRadius: Math.min(width, height) * 0.25,
+        colorStart: 'rgba(217, 70, 239, 0.55)',
+        colorMid: 'rgba(147, 51, 234, 0.38)',
+        colorEnd: 'rgba(59, 7, 100, 0.08)',
+        rimColor: 'rgba(245, 208, 254, 0.7)',
+      },
+      // Blob 4: Deep Sapphire / Teal (Bottom Right)
+      {
+        xRatio: 0.85,
+        yRatio: 0.78,
+        baseRadius: Math.min(width, height) * 0.26,
+        colorStart: 'rgba(20, 184, 166, 0.6)',
+        colorMid: 'rgba(6, 182, 212, 0.4)',
+        colorEnd: 'rgba(15, 23, 42, 0.1)',
+        rimColor: 'rgba(204, 251, 241, 0.75)',
+      },
+      // Blob 5: Center Ambient Glass Fluid (Central background)
+      {
+        xRatio: 0.5,
+        yRatio: 0.5,
+        baseRadius: Math.min(width, height) * 0.3,
+        colorStart: 'rgba(59, 130, 246, 0.45)',
+        colorMid: 'rgba(79, 70, 229, 0.3)',
+        colorEnd: 'rgba(15, 23, 42, 0.05)',
+        rimColor: 'rgba(191, 219, 254, 0.6)',
+      },
+      // Blob 6: Floating Accent Bubble (Top Mid)
+      {
+        xRatio: 0.45,
+        yRatio: 0.15,
+        baseRadius: Math.min(width, height) * 0.14,
+        colorStart: 'rgba(14, 165, 233, 0.6)',
+        colorMid: 'rgba(56, 189, 248, 0.35)',
+        colorEnd: 'rgba(15, 23, 42, 0.1)',
+        rimColor: 'rgba(224, 242, 254, 0.85)',
+      },
+      // Blob 7: Floating Accent Bubble (Bottom Mid)
+      {
+        xRatio: 0.55,
+        yRatio: 0.88,
+        baseRadius: Math.min(width, height) * 0.15,
+        colorStart: 'rgba(168, 85, 247, 0.55)',
+        colorMid: 'rgba(129, 140, 248, 0.35)',
+        colorEnd: 'rgba(15, 23, 42, 0.1)',
+        rimColor: 'rgba(233, 213, 255, 0.8)',
+      },
+    ];
+
+    const blobs: LiquidBlob[] = blobConfigs.map((cfg, i) => ({
+      x: width * cfg.xRatio,
+      y: height * cfg.yRatio,
+      vx: (Math.random() - 0.5) * 0.5,
+      vy: (Math.random() - 0.5) * 0.5,
+      baseRadius: cfg.baseRadius,
+      colorStart: cfg.colorStart,
+      colorMid: cfg.colorMid,
+      colorEnd: cfg.colorEnd,
+      rimColor: cfg.rimColor,
+      wobbleSpeed1: 0.018 + (i % 3) * 0.007,
+      wobbleSpeed2: 0.025 + (i % 2) * 0.006,
+      wobbleSpeed3: 0.012 + (i % 4) * 0.005,
+      harmonics: [
+        Math.floor(Math.random() * 2) + 2,
+        Math.floor(Math.random() * 2) + 4,
+        Math.floor(Math.random() * 2) + 6,
+      ],
+      phase: i * 1.5,
+    }));
+
+    // Floating Stardust Particles
+    const particleCount = 40;
     const particles = Array.from({ length: particleCount }, () => ({
       x: Math.random() * width,
       y: Math.random() * height,
-      size: Math.random() * 2 + 0.8,
-      speedY: Math.random() * 0.4 + 0.2,
+      size: Math.random() * 2.2 + 0.8,
       speedX: (Math.random() - 0.5) * 0.3,
-      alpha: Math.random() * 0.6 + 0.2,
-      pulseSpeed: Math.random() * 0.03 + 0.01,
-      phase: Math.random() * Math.PI * 2,
+      speedY: (Math.random() - 0.5) * 0.3,
+      alpha: Math.random() * 0.5 + 0.3,
+      pulse: Math.random() * Math.PI * 2,
+      pulseSpeed: Math.random() * 0.02 + 0.01,
     }));
 
     let time = 0;
 
     const render = () => {
-      time += 0.018;
+      time += 0.015;
 
-      // Smooth mouse lerp
-      mouseX += (targetMouseX - mouseX) * 0.05;
-      mouseY += (targetMouseY - mouseY) * 0.05;
+      // Mouse smooth interpolation
+      mouseX += (targetMouseX - mouseX) * 0.04;
+      mouseY += (targetMouseY - mouseY) * 0.04;
 
-      // Clear with dark deep space fade
-      ctx.fillStyle = '#080d1a';
+      // Deep dark futuristic canvas base
+      ctx.fillStyle = '#060913';
       ctx.fillRect(0, 0, width, height);
 
-      const horizonY = height * 0.52;
-      const mouseTiltX = (mouseX / width - 0.5) * 80;
-      const mouseTiltY = (mouseY / height - 0.5) * 30;
+      // Render Each Morphing 3D Liquid Glass Blob
+      blobs.forEach((blob) => {
+        // Move blob
+        blob.x += blob.vx;
+        blob.y += blob.vy;
 
-      // 1. Horizon Atmosphere & Radiant Neon Glow
-      const horizonGlow = ctx.createRadialGradient(
-        width / 2 + mouseTiltX * 0.5,
-        horizonY + mouseTiltY * 0.3,
-        20,
-        width / 2,
-        horizonY,
-        width * 0.75
-      );
-      horizonGlow.addColorStop(0, 'rgba(56, 189, 248, 0.22)');
-      horizonGlow.addColorStop(0.35, 'rgba(79, 70, 229, 0.12)');
-      horizonGlow.addColorStop(0.7, 'rgba(15, 23, 42, 0.05)');
-      horizonGlow.addColorStop(1, 'rgba(8, 13, 26, 0)');
+        // Soft bounce within boundaries
+        const padding = blob.baseRadius * 0.5;
+        if (blob.x < -padding) blob.vx = Math.abs(blob.vx);
+        if (blob.x > width + padding) blob.vx = -Math.abs(blob.vx);
+        if (blob.y < -padding) blob.vy = Math.abs(blob.vy);
+        if (blob.y > height + padding) blob.vy = -Math.abs(blob.vy);
 
-      ctx.fillStyle = horizonGlow;
-      ctx.fillRect(0, 0, width, height);
-
-      // 2. Horizon Line Glow Beam
-      ctx.save();
-      const horizonBeam = ctx.createLinearGradient(0, 0, width, 0);
-      horizonBeam.addColorStop(0, 'rgba(56, 189, 248, 0)');
-      horizonBeam.addColorStop(0.25, 'rgba(56, 189, 248, 0.25)');
-      horizonBeam.addColorStop(0.5, 'rgba(147, 197, 253, 0.75)');
-      horizonBeam.addColorStop(0.75, 'rgba(99, 102, 241, 0.25)');
-      horizonBeam.addColorStop(1, 'rgba(99, 102, 241, 0)');
-
-      ctx.strokeStyle = horizonBeam;
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(0, horizonY);
-      ctx.lineTo(width, horizonY);
-      ctx.stroke();
-      ctx.restore();
-
-      // 3. 3D Perspective Grid with Undulating Horizon Waves
-      const cols = 28;
-      const rows = 26;
-      const gridFov = 340;
-      const speed = time * 45;
-
-      // Pre-calculate 3D vertex points with undulating cyber wave ripples
-      const gridPoints: { x: number; y: number; depth: number }[][] = [];
-
-      for (let r = 0; r <= rows; r++) {
-        gridPoints[r] = [];
-        // Z increases towards the viewer (from horizon to bottom)
-        const rawZ = (r * 32 + (speed % 32));
-        const z = Math.max(15, rawZ);
-
-        for (let c = 0; c <= cols; c++) {
-          // X centered around vanishing point
-          const worldX = (c - cols / 2) * 58 + mouseTiltX * (z / 300);
-
-          // Wave equation: dynamic undulating ripples
-          const wave1 = Math.sin(c * 0.35 + time * 2) * 14;
-          const wave2 = Math.cos(r * 0.3 + time * 1.5) * 10;
-          const wave3 = Math.sin((c + r) * 0.2 + time) * 8;
-          const worldY = wave1 + wave2 + wave3;
-
-          // 3D Perspective Projection
-          const scale = gridFov / (gridFov + (rows * 32 - z));
-          const screenX = width / 2 + worldX * scale;
-          const screenY = horizonY + (z + worldY) * scale * 0.95;
-
-          gridPoints[r][c] = { x: screenX, y: screenY, depth: z / (rows * 32) };
+        // Interactive mouse gravity / gentle push
+        const dx = mouseX - blob.x;
+        const dy = mouseY - blob.y;
+        const distToMouse = Math.sqrt(dx * dx + dy * dy);
+        if (distToMouse < blob.baseRadius * 1.5 && distToMouse > 0) {
+          const force = (1 - distToMouse / (blob.baseRadius * 1.5)) * 0.8;
+          blob.x -= (dx / distToMouse) * force;
+          blob.y -= (dy / distToMouse) * force;
         }
-      }
 
-      // Draw Horizontal Grid Waves
-      for (let r = 0; r <= rows; r++) {
-        const depth = (r * 32 + (speed % 32)) / (rows * 32);
-        const alpha = Math.min(0.65, Math.pow(depth, 1.4) * 0.7);
-
+        // Draw Organic Fluid Polygon with Multi-Harmonic Deformation
+        ctx.save();
         ctx.beginPath();
-        for (let c = 0; c <= cols; c++) {
-          const pt = gridPoints[r][c];
-          if (c === 0) {
-            ctx.moveTo(pt.x, pt.y);
-          } else {
-            ctx.lineTo(pt.x, pt.y);
-          }
-        }
-        ctx.strokeStyle = `rgba(56, 189, 248, ${alpha})`;
-        ctx.lineWidth = Math.max(0.75, depth * 1.8);
-        ctx.stroke();
-      }
 
-      // Draw Longitudinal Grid Lines (converging to vanishing point)
-      for (let c = 0; c <= cols; c++) {
+        const numPoints = 64;
+        const points: { x: number; y: number }[] = [];
+
+        for (let j = 0; j < numPoints; j++) {
+          const angle = (j / numPoints) * Math.PI * 2;
+
+          // Organic 3D morphing equation with multiple sine wave harmonics
+          const h1 = Math.sin(angle * blob.harmonics[0] + time * blob.wobbleSpeed1 * 40 + blob.phase);
+          const h2 = Math.cos(angle * blob.harmonics[1] - time * blob.wobbleSpeed2 * 35 + blob.phase);
+          const h3 = Math.sin(angle * blob.harmonics[2] + time * blob.wobbleSpeed3 * 30);
+
+          // Dynamic radius with fluid morphing
+          const deform = h1 * 0.18 + h2 * 0.12 + h3 * 0.06;
+          const currentRadius = blob.baseRadius * (1 + deform);
+
+          const px = blob.x + Math.cos(angle) * currentRadius;
+          const py = blob.y + Math.sin(angle) * currentRadius;
+          points.push({ x: px, y: py });
+        }
+
+        // Smooth curve through the points
+        ctx.moveTo((points[0].x + points[numPoints - 1].x) / 2, (points[0].y + points[numPoints - 1].y) / 2);
+
+        for (let j = 0; j < numPoints; j++) {
+          const next = points[(j + 1) % numPoints];
+          const midX = (points[j].x + next.x) / 2;
+          const midY = (points[j].y + next.y) / 2;
+          ctx.quadraticCurveTo(points[j].x, points[j].y, midX, midY);
+        }
+
+        ctx.closePath();
+
+        // 3D Glass Radial Illumination Gradient
+        const lightAngle = -Math.PI / 4;
+        const lightOffset = blob.baseRadius * 0.35;
+        const focalX = blob.x + Math.cos(lightAngle) * lightOffset;
+        const focalY = blob.y + Math.sin(lightAngle) * lightOffset;
+
+        const blobGrad = ctx.createRadialGradient(
+          focalX,
+          focalY,
+          blob.baseRadius * 0.05,
+          blob.x,
+          blob.y,
+          blob.baseRadius * 1.35
+        );
+        blobGrad.addColorStop(0, blob.colorStart);
+        blobGrad.addColorStop(0.45, blob.colorMid);
+        blobGrad.addColorStop(0.85, blob.colorEnd);
+        blobGrad.addColorStop(1, 'rgba(6, 9, 19, 0)');
+
+        ctx.fillStyle = blobGrad;
+        ctx.fill();
+
+        // Luminous Glass Rim Light (Fresnel border effect)
+        ctx.strokeStyle = blob.rimColor;
+        ctx.lineWidth = 1.6;
+        ctx.stroke();
+
+        // Internal 3D Glass Specular Crescent Reflection (Top-Left)
+        ctx.save();
         ctx.beginPath();
-        for (let r = 0; r <= rows; r++) {
-          const pt = gridPoints[r][c];
-          if (r === 0) {
-            ctx.moveTo(pt.x, pt.y);
-          } else {
-            ctx.lineTo(pt.x, pt.y);
-          }
-        }
-        const centerDist = Math.abs(c - cols / 2) / (cols / 2);
-        const lineAlpha = (1 - centerDist * 0.4) * 0.38;
-        ctx.strokeStyle = `rgba(99, 102, 241, ${lineAlpha})`;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      }
+        const specRadius = blob.baseRadius * 0.65;
+        const specX = blob.x - blob.baseRadius * 0.28;
+        const specY = blob.y - blob.baseRadius * 0.28;
+        ctx.arc(specX, specY, specRadius * 0.45, 0, Math.PI * 2);
+        const specGrad = ctx.createRadialGradient(specX, specY, 2, specX, specY, specRadius * 0.45);
+        specGrad.addColorStop(0, 'rgba(255, 255, 255, 0.45)');
+        specGrad.addColorStop(0.4, 'rgba(255, 255, 255, 0.15)');
+        specGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = specGrad;
+        ctx.fill();
+        ctx.restore();
 
-      // 4. Subtle Intersecting Grid Nodes (Glowing Cyber Sparks)
-      for (let r = 4; r <= rows; r += 3) {
-        for (let c = 2; c <= cols; c += 4) {
-          const pt = gridPoints[r][c];
-          if (pt.y > horizonY + 5 && pt.y < height) {
-            const nodeAlpha = Math.min(0.8, pt.depth * 0.9);
-            ctx.fillStyle = `rgba(186, 230, 253, ${nodeAlpha})`;
-            ctx.beginPath();
-            ctx.arc(pt.x, pt.y, Math.max(1, pt.depth * 2.5), 0, Math.PI * 2);
-            ctx.fill();
-          }
-        }
-      }
+        ctx.restore();
+      });
 
-      // 5. Floating Digital Dust Particles (Upper atmosphere)
+      // Floating Ambient Cyber Stardust
       particles.forEach((p) => {
-        p.y -= p.speedY;
         p.x += p.speedX;
-        p.phase += p.pulseSpeed;
+        p.y += p.speedY;
+        p.pulse += p.pulseSpeed;
 
-        if (p.y < 0) {
-          p.y = height;
-          p.x = Math.random() * width;
-        }
         if (p.x < 0) p.x = width;
         if (p.x > width) p.x = 0;
+        if (p.y < 0) p.y = height;
+        if (p.y > height) p.y = 0;
 
-        const currentAlpha = p.alpha * (0.6 + 0.4 * Math.sin(p.phase));
-        ctx.fillStyle = `rgba(147, 197, 253, ${currentAlpha})`;
+        const currentAlpha = p.alpha * (0.6 + 0.4 * Math.sin(p.pulse));
+        ctx.fillStyle = `rgba(186, 230, 253, ${currentAlpha})`;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
         ctx.fill();
       });
 
-      // 6. Top & Bottom Cinematic Gradient Vignettes
-      const topVignette = ctx.createLinearGradient(0, 0, 0, height * 0.35);
-      topVignette.addColorStop(0, 'rgba(8, 13, 26, 0.85)');
-      topVignette.addColorStop(1, 'rgba(8, 13, 26, 0)');
-      ctx.fillStyle = topVignette;
-      ctx.fillRect(0, 0, width, height * 0.35);
-
-      const bottomVignette = ctx.createLinearGradient(0, height * 0.78, 0, height);
-      bottomVignette.addColorStop(0, 'rgba(8, 13, 26, 0)');
-      bottomVignette.addColorStop(1, 'rgba(8, 13, 26, 0.85)');
-      ctx.fillStyle = bottomVignette;
-      ctx.fillRect(0, height * 0.78, width, height * 0.22);
+      // Ambient Corner Vignette
+      const vig = ctx.createRadialGradient(
+        width / 2,
+        height / 2,
+        Math.min(width, height) * 0.4,
+        width / 2,
+        height / 2,
+        Math.max(width, height) * 0.85
+      );
+      vig.addColorStop(0, 'rgba(6, 9, 19, 0)');
+      vig.addColorStop(1, 'rgba(6, 9, 19, 0.7)');
+      ctx.fillStyle = vig;
+      ctx.fillRect(0, 0, width, height);
 
       animationFrameId = requestAnimationFrame(render);
     };
@@ -228,12 +320,8 @@ export default function FloatingBackground() {
 
   return (
     <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-      {/* High-Performance 60FPS 3D Horizon Waves Canvas */}
+      {/* High-Performance 60FPS Full-Screen 3D Liquid Lava & Glass Blobs */}
       <canvas ref={canvasRef} className="w-full h-full block" />
-
-      {/* Subtle Aurora Fog Overlays for Glassmorphic Depth */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-1/3 right-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-[120px] pointer-events-none" />
     </div>
   );
 }
