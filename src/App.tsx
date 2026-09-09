@@ -6,6 +6,7 @@ import QuizView from './components/QuizView';
 import ResultView from './components/ResultView';
 import AdminLogin from './components/admin/AdminLogin';
 import AdminDashboard from './components/admin/AdminDashboard';
+import FloatingBackground from './components/FloatingBackground';
 import ErrorBoundary from './components/ErrorBoundary';
 import { INITIAL_QUESTIONS, getShuffledQuestions } from './data/questions';
 import type { Question, StudentProfile, QuizSubmission } from './types/quiz';
@@ -205,7 +206,10 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen relative flex flex-col font-sans text-slate-100 selection:bg-blue-500/30 selection:text-blue-200">
+      <div className="min-h-screen relative flex flex-col font-sans text-slate-100 selection:bg-blue-500/30 selection:text-blue-200 overflow-hidden">
+        {/* Floating 3D Frosted Glass Background Elements */}
+        <FloatingBackground />
+
         {/* Global Minimal Navigation Header */}
         <header className="w-full border-b border-white/[0.08] bg-slate-950/70 backdrop-blur-md sticky top-0 z-50">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
@@ -239,7 +243,7 @@ export default function App() {
         </header>
 
         {/* Main Content Area */}
-        <main className="flex-1 flex items-center justify-center py-6 sm:py-8">
+        <main className="flex-1 flex items-center justify-center py-6 sm:py-8 relative z-10">
           <AnimatePresence mode="wait">
             {route === 'student_login' && (
               <motion.div
