@@ -24,115 +24,79 @@
 }
 
 html, body, #root {
-  height: 100%;
-  background-color: #040915;
-  color: #F8FAFC;
+  min-height: 100%;
+  background-color: #0b0f19;
+  color: #f1f5f9;
   font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
   overflow-x: hidden;
-  background: radial-gradient(circle at 50% 0%, #0c1833 0%, #060d1d 55%, #030610 100%);
+  background: radial-gradient(circle at 50% 0%, #111827 0%, #0b0f19 70%);
   background-attachment: fixed;
 }
 
-/* Starfield Subtle Background */
-.stars-bg {
-  position: fixed;
-  inset: 0;
-  z-index: -10;
-  background-image: 
-    radial-gradient(1px 1px at 15% 15%, rgba(255, 255, 255, 0.7) 100%, transparent),
-    radial-gradient(1px 1px at 45% 35%, rgba(255, 255, 255, 0.6) 100%, transparent),
-    radial-gradient(1.5px 1.5px at 75% 20%, rgba(56, 225, 255, 0.7) 100%, transparent),
-    radial-gradient(1px 1px at 85% 75%, rgba(255, 255, 255, 0.5) 100%, transparent),
-    radial-gradient(1.5px 1.5px at 25% 85%, rgba(112, 88, 255, 0.6) 100%, transparent),
-    radial-gradient(1px 1px at 60% 80%, rgba(255, 255, 255, 0.4) 100%, transparent);
-  background-size: 360px 360px;
-  opacity: 0.65;
-  pointer-events: none;
-}
-
-/* Subtle ambient aurora glow */
-.ambient-glow {
-  position: fixed;
-  inset: 0;
-  z-index: -9;
-  background: radial-gradient(circle at 80% 10%, rgba(0, 210, 255, 0.05) 0%, transparent 45%),
-              radial-gradient(circle at 20% 90%, rgba(112, 88, 255, 0.05) 0%, transparent 45%);
-  pointer-events: none;
-}
-
-/* High-End Glassmorphism */
-.glass-panel-dark {
-  background: rgba(8, 16, 34, 0.6);
-  backdrop-filter: blur(28px);
-  -webkit-backdrop-filter: blur(28px);
-  border: 1px solid rgba(56, 225, 255, 0.15);
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.45),
-              inset 0 1px 0 rgba(255, 255, 255, 0.08),
-              inset 0 0 25px rgba(0, 210, 255, 0.03);
-}
-
-.glass-card-dark {
-  background: rgba(12, 22, 46, 0.5);
+/* Crisp Modern Minimal Cards & Surfaces */
+.surface-card {
+  background: rgba(17, 24, 39, 0.75);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3),
-              inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.5);
 }
 
-.glass-card-interactive {
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+.surface-elevated {
+  background: rgba(24, 33, 53, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.glass-card-interactive:hover {
-  background: rgba(16, 30, 62, 0.65);
-  border-color: rgba(56, 225, 255, 0.35);
-  box-shadow: 0 12px 35px rgba(0, 0, 0, 0.4),
-              0 0 20px rgba(0, 210, 255, 0.12),
-              inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  transform: translateY(-1px);
+/* Minimal Interactive Option Cards */
+.option-item {
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.glass-input {
-  background: rgba(6, 13, 29, 0.7);
+.option-item:hover {
+  background: rgba(30, 41, 59, 0.6);
+  border-color: rgba(96, 165, 250, 0.35);
+}
+
+.option-item-selected {
+  background: rgba(37, 99, 235, 0.08);
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.4), 0 4px 16px -4px rgba(59, 130, 246, 0.15);
+}
+
+/* Clean Form Inputs */
+.minimal-input {
+  background: rgba(15, 23, 42, 0.6);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  color: #F8FAFC;
-  transition: all 0.2s ease-in-out;
+  color: #f8fafc;
+  transition: all 0.15s ease-in-out;
 }
 
-.glass-input:focus {
-  border-color: #00D2FF;
-  background: rgba(10, 20, 42, 0.85);
-  box-shadow: 0 0 0 3px rgba(0, 210, 255, 0.15),
-              inset 0 1px 2px rgba(0, 0, 0, 0.2);
+.minimal-input:focus {
+  border-color: #3b82f6;
+  background: rgba(15, 23, 42, 0.9);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
   outline: none;
 }
 
-.glass-input::placeholder {
-  color: #64748B;
+.minimal-input::placeholder {
+  color: #64748b;
 }
 
-/* Subtle, formal neon */
-.neon-glow-cyan {
-  text-shadow: 0 0 20px rgba(56, 225, 255, 0.35);
-}
-
-.neon-border-cyan {
-  border-color: rgba(56, 225, 255, 0.4);
-  box-shadow: 0 0 15px rgba(0, 210, 255, 0.15);
-}
-
-/* Clean Custom Scrollbar */
+/* Minimal Modern Scrollbars */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(6, 13, 29, 0.5);
+  background: rgba(11, 15, 25, 0.6);
 }
 
 ::-webkit-scrollbar-thumb {
@@ -141,80 +105,5 @@ body {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(0, 210, 255, 0.4);
-}
-
-/* Authentic High-Tech Claymorphism & Glassmorphism */
-.clay-card-obsidian {
-  background: radial-gradient(120% 120% at 50% 0%, rgba(16, 29, 58, 0.88) 0%, rgba(6, 13, 29, 0.95) 100%);
-  backdrop-filter: blur(32px);
-  -webkit-backdrop-filter: blur(32px);
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  box-shadow: 
-    0 24px 60px -12px rgba(0, 0, 0, 0.75),
-    0 0 40px rgba(0, 210, 255, 0.08),
-    inset 0 2px 2px rgba(255, 255, 255, 0.18),
-    inset 0 -3px 6px rgba(0, 0, 0, 0.6);
-}
-
-.clay-button-default {
-  background: linear-gradient(180deg, rgba(20, 36, 70, 0.75) 0%, rgba(10, 19, 39, 0.85) 100%);
-  border: 1px solid rgba(255, 255, 255, 0.10);
-  box-shadow: 
-    0 8px 22px rgba(0, 0, 0, 0.35),
-    inset 0 1px 2px rgba(255, 255, 255, 0.15),
-    inset 0 -2px 4px rgba(0, 0, 0, 0.35);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.clay-button-default:hover {
-  background: linear-gradient(180deg, rgba(28, 48, 92, 0.85) 0%, rgba(14, 26, 52, 0.9) 100%);
-  border-color: rgba(56, 225, 255, 0.35);
-  box-shadow: 
-    0 12px 28px rgba(0, 0, 0, 0.45),
-    0 0 15px rgba(0, 210, 255, 0.15),
-    inset 0 1px 2px rgba(255, 255, 255, 0.25),
-    inset 0 -2px 4px rgba(0, 0, 0, 0.4);
-}
-
-.clay-button-selected {
-  background: linear-gradient(180deg, rgba(0, 150, 214, 0.22) 0%, rgba(6, 30, 60, 0.5) 100%);
-  border: 1.5px solid #00D2FF;
-  box-shadow: 
-    0 14px 32px rgba(0, 210, 255, 0.25),
-    0 0 25px rgba(0, 210, 255, 0.2),
-    inset 0 2px 4px rgba(255, 255, 255, 0.35),
-    inset 0 -3px 6px rgba(0, 0, 0, 0.5);
-}
-
-.clay-badge {
-  box-shadow: 
-    0 4px 10px rgba(0, 0, 0, 0.3),
-    inset 0 1px 1px rgba(255, 255, 255, 0.25),
-    inset 0 -1px 2px rgba(0, 0, 0, 0.35);
-}
-
-.clay-badge-active {
-  background: linear-gradient(135deg, #00D2FF 0%, #38E1FF 100%);
-  color: #030712;
-  box-shadow: 
-    0 4px 15px rgba(0, 210, 255, 0.45),
-    inset 0 1px 2px rgba(255, 255, 255, 0.6),
-    inset 0 -1px 2px rgba(0, 0, 0, 0.2);
-}
-
-.clay-cta {
-  background: linear-gradient(135deg, #00C6FF 0%, #0072FF 50%, #7058FF 100%);
-  box-shadow: 
-    0 10px 30px rgba(0, 150, 255, 0.4),
-    inset 0 1.5px 2px rgba(255, 255, 255, 0.45),
-    inset 0 -2px 4px rgba(0, 0, 0, 0.3);
-}
-
-.clay-cta:hover {
-  box-shadow: 
-    0 14px 36px rgba(0, 150, 255, 0.55),
-    0 0 20px rgba(0, 210, 255, 0.3),
-    inset 0 2px 2px rgba(255, 255, 255, 0.6),
-    inset 0 -2px 4px rgba(0, 0, 0, 0.3);
-}
+  background: rgba(255, 255, 255, 0.25);
+}

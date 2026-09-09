@@ -205,23 +205,22 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen relative flex flex-col font-sans text-bright-white selection:bg-electric-cyan/30 selection:text-electric-cyan">
-        {/* Subtle Starfield & Ambient Glow */}
-        <div className="stars-bg" />
-        <div className="ambient-glow" />
-
-        {/* Global Navigation Header - NO ADMIN BUTTONS SHOWN TO STUDENTS! */}
-        <header className="w-full border-b border-white/5 bg-midnight-950/60 backdrop-blur-xl sticky top-0 z-50">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+      <div className="min-h-screen relative flex flex-col font-sans text-slate-100 selection:bg-blue-500/30 selection:text-blue-200">
+        {/* Global Minimal Navigation Header */}
+        <header className="w-full border-b border-white/[0.08] bg-slate-950/70 backdrop-blur-md sticky top-0 z-50">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-electric-cyan/10 border border-electric-cyan/30 flex items-center justify-center text-electric-cyan shadow-[0_0_15px_rgba(56,225,255,0.2)]">
-                <Cpu size={20} />
+              <div className="w-8 h-8 rounded-lg bg-blue-600/15 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold text-xs tracking-wide">
+                ST
               </div>
               <div>
-                <div className="text-sm font-bold tracking-tight text-bright-white">
-                  SPARKTRON <span className="font-mono text-electric-cyan">2026</span>
+                <div className="text-xs sm:text-sm font-semibold tracking-tight text-white flex items-center gap-2">
+                  <span>SPARKTRON 2026</span>
+                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700/60">
+                    Technical Quiz
+                  </span>
                 </div>
-                <div className="text-[10px] font-mono text-muted-text uppercase tracking-widest">
+                <div className="text-[10px] text-slate-400 hidden sm:block">
                   National Level Technical Symposium
                 </div>
               </div>
@@ -231,7 +230,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={handleAdminLogout}
-                className="text-xs font-mono text-muted-text hover:text-bright-white px-3.5 py-1.5 rounded-xl border border-white/10 hover:border-white/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                className="text-xs text-slate-400 hover:text-white px-3 py-1.5 rounded-lg border border-slate-800 hover:border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer"
               >
                 <span>Return to Student Portal</span>
               </button>
@@ -240,15 +239,15 @@ export default function App() {
         </header>
 
         {/* Main Content Area */}
-        <main className="flex-1 flex items-center justify-center py-6 sm:py-10">
+        <main className="flex-1 flex items-center justify-center py-6 sm:py-8">
           <AnimatePresence mode="wait">
             {route === 'student_login' && (
               <motion.div
                 key="student_login"
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -12 }}
-                transition={{ duration: 0.25 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
                 className="w-full"
               >
                 <StudentLogin onLoginSuccess={handleStudentLoginSuccess} />
@@ -258,10 +257,10 @@ export default function App() {
             {route === 'quiz_session' && activeStudent && (
               <motion.div
                 key="quiz_session"
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.98 }}
-                transition={{ duration: 0.25 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
                 className="w-full"
               >
                 <QuizView
@@ -275,10 +274,10 @@ export default function App() {
             {route === 'quiz_result' && activeStudent && quizResult && (
               <motion.div
                 key="quiz_result"
-                initial={{ opacity: 0, scale: 0.96 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.96 }}
-                transition={{ duration: 0.25 }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
                 className="w-full"
               >
                 <ResultView

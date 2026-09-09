@@ -26,40 +26,30 @@ export default function AdminLogin({ onSuccess, onCancel }: AdminLoginProps) {
   };
 
   return (
-    <div className="w-full max-w-md mx-auto px-4 py-12">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="glass-panel-dark rounded-2xl p-6 sm:p-10 relative overflow-hidden"
-      >
-        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-electric-purple to-transparent" />
-
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-electric-purple/10 border border-electric-purple/30 text-electric-purple mb-4 shadow-[0_0_25px_rgba(112,88,255,0.25)]">
-            <Lock size={28} />
+    <div className="w-full max-w-sm mx-auto px-4 py-12">
+      <div className="surface-card rounded-2xl p-6 sm:p-8 relative">
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-slate-800 border border-slate-700/60 text-slate-300 mb-3">
+            <Lock size={22} />
           </div>
-          <h2 className="text-2xl font-bold tracking-tight text-bright-white mb-1.5">
-            Admin Mission Control
+          <h2 className="text-lg sm:text-xl font-semibold tracking-tight text-white mb-1">
+            Admin Access
           </h2>
-          <p className="text-xs text-muted-text font-mono">
-            Authorized Personnel Only • Secure Gateway
+          <p className="text-xs text-slate-400">
+            Authorized Personnel Only
           </p>
         </div>
 
         {error && (
-          <motion.div
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6 p-3 rounded-xl bg-red-500/15 border border-red-500/30 text-red-300 text-xs text-center font-medium"
-          >
-            Invalid Master Key. Access rejected.
-          </motion.div>
+          <div className="mb-4 p-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-300 text-xs text-center font-medium">
+            Invalid Password. Access denied.
+          </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-mono font-medium text-electric-cyan uppercase tracking-wider mb-2">
-              Master Access Password
+            <label className="block text-xs font-medium text-slate-300 mb-1.5">
+              Admin Password
             </label>
             <div className="relative">
               <input
@@ -70,42 +60,42 @@ export default function AdminLogin({ onSuccess, onCancel }: AdminLoginProps) {
                   setPassword(e.target.value);
                   if (error) setError(false);
                 }}
-                placeholder="Enter admin password..."
-                className="w-full glass-input rounded-xl px-4 py-3 text-sm pr-11 focus:outline-none"
+                placeholder="Enter password..."
+                className="w-full minimal-input rounded-xl px-3.5 py-2.5 text-sm pr-10 focus:outline-none"
               />
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-muted-text hover:text-bright-white transition-colors"
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-500 hover:text-slate-300 transition-colors"
               >
-                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
-            <div className="mt-1.5 flex justify-between text-[11px] text-subtle-text font-mono">
-              <span>Default: admin@spark2026</span>
+            <div className="mt-1.5 flex justify-between text-[11px] text-slate-500 font-mono">
+              <span>Key: admin@spark2026</span>
             </div>
           </div>
 
           <button
             type="submit"
-            className="w-full py-3.5 px-6 rounded-xl font-medium text-sm text-midnight-950 bg-gradient-to-r from-electric-purple via-electric-cyan to-electric-blue hover:opacity-95 shadow-[0_0_20px_rgba(112,88,255,0.3)] transition-all flex items-center justify-center gap-2 cursor-pointer font-sans"
+            className="w-full py-2.5 px-5 rounded-xl font-medium text-sm text-white bg-blue-600 hover:bg-blue-500 shadow-sm transition-all flex items-center justify-center gap-2 cursor-pointer"
           >
             <span>Unlock Dashboard</span>
-            <ArrowRight size={18} />
+            <ArrowRight size={16} />
           </button>
         </form>
 
-        <div className="mt-6 pt-5 border-t border-white/10 text-center">
+        <div className="mt-5 pt-4 border-t border-white/[0.08] text-center">
           <button
             type="button"
             onClick={onCancel}
-            className="text-xs text-subtle-text hover:text-bright-white transition-colors flex items-center justify-center gap-1.5 mx-auto font-mono"
+            className="text-xs text-slate-400 hover:text-white transition-colors flex items-center justify-center gap-1.5 mx-auto"
           >
             <ArrowLeft size={13} />
-            <span>Back to Student Portal</span>
+            <span>Back to Portal</span>
           </button>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }

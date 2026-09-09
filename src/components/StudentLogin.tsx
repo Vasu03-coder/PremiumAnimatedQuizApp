@@ -50,53 +50,41 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
   };
 
   return (
-    <div className="w-full max-w-lg mx-auto px-4 sm:px-0">
-      <motion.div
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: 'easeOut' }}
-        className="glass-panel-dark rounded-2xl p-6 sm:p-10 relative overflow-hidden"
-      >
-        {/* Subtle top cyan light line */}
-        <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-electric-cyan to-transparent opacity-70" />
-
+    <div className="w-full max-w-md mx-auto px-4">
+      <div className="surface-card rounded-2xl p-6 sm:p-8 relative">
         {/* Header */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-electric-cyan/10 border border-electric-cyan/30 text-electric-cyan mb-4 shadow-[0_0_20px_rgba(56,225,255,0.15)]">
-            <ShieldCheck size={26} />
+        <div className="text-center mb-7">
+          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 mb-3">
+            <ShieldCheck size={24} />
           </div>
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-bright-white mb-2">
+          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-white mb-1.5">
             Student Assessment Portal
           </h2>
-          <p className="text-sm text-muted-text font-normal max-w-sm mx-auto">
-            SPARKTRON 2026 Technical Quiz • Controlled Examination Session
+          <p className="text-xs sm:text-sm text-slate-400 font-normal max-w-xs mx-auto leading-relaxed">
+            SPARKTRON 2026 Technical Quiz • Controlled Examination
           </p>
         </div>
 
         {/* Error Alert Box */}
         {errorMessage && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-start gap-3 text-red-200 text-sm"
-          >
-            <AlertCircle size={18} className="text-red-400 shrink-0 mt-0.5" />
+          <div className="mb-5 p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 flex items-start gap-2.5 text-red-200 text-xs sm:text-sm">
+            <AlertCircle size={17} className="text-red-400 shrink-0 mt-0.5" />
             <div className="flex-1 leading-relaxed">
               <span className="font-semibold text-red-300">Access Denied: </span>
               {errorMessage}
             </div>
-          </motion.div>
+          </div>
         )}
 
-        {/* Form - Only Name & Email as required */}
-        <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Form - Only Name & Email */}
+        <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-mono font-medium text-electric-cyan uppercase tracking-wider mb-2">
+            <label className="block text-xs font-medium text-slate-300 mb-1.5">
               Full Name
             </label>
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-muted-text">
-                <User size={18} />
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+                <User size={16} />
               </div>
               <input
                 type="text"
@@ -104,18 +92,18 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Sankar Raja"
-                className="w-full glass-input rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none"
+                className="w-full minimal-input rounded-xl pl-9 pr-3.5 py-2.5 text-sm focus:outline-none"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-mono font-medium text-electric-cyan uppercase tracking-wider mb-2">
+            <label className="block text-xs font-medium text-slate-300 mb-1.5">
               Registered Email Address
             </label>
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-muted-text">
-                <Mail size={18} />
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+                <Mail size={16} />
               </div>
               <input
                 type="email"
@@ -123,11 +111,11 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="e.g. candidate@domain.com"
-                className="w-full glass-input rounded-xl pl-10 pr-4 py-3 text-sm focus:outline-none"
+                className="w-full minimal-input rounded-xl pl-9 pr-3.5 py-2.5 text-sm focus:outline-none"
               />
             </div>
-            <p className="text-[11px] text-subtle-text mt-1.5 font-mono">
-              * Must match your symposium registration email
+            <p className="text-[11px] text-slate-500 mt-1.5">
+              * Must match your symposium registered email
             </p>
           </div>
 
@@ -135,34 +123,34 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full py-3.5 px-6 rounded-xl font-medium text-sm text-midnight-950 bg-gradient-to-r from-electric-blue to-electric-cyan hover:from-electric-cyan hover:to-electric-blue shadow-[0_0_20px_rgba(56,225,255,0.3)] hover:shadow-[0_0_28px_rgba(56,225,255,0.45)] transition-all duration-300 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed font-sans"
+            className="w-full py-2.5 px-5 rounded-xl font-medium text-sm text-white bg-blue-600 hover:bg-blue-500 shadow-sm transition-all duration-150 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed mt-2"
           >
             {isLoading ? (
               <>
-                <Loader2 size={18} className="animate-spin text-midnight-950" />
-                <span>Verifying Database Records...</span>
+                <Loader2 size={16} className="animate-spin text-white" />
+                <span>Verifying Registration...</span>
               </>
             ) : (
               <>
-                <span>Enter Examination Room</span>
-                <ArrowRight size={18} />
+                <span>Enter Assessment Room</span>
+                <ArrowRight size={16} />
               </>
             )}
           </button>
         </form>
 
-        {/* Helpful verified test account link */}
-        <div className="mt-6 pt-5 border-t border-white/10 flex items-center justify-center text-xs">
+        {/* Helpful sample account filler */}
+        <div className="mt-5 pt-4 border-t border-white/[0.08] flex items-center justify-center text-xs">
           <button
             type="button"
             onClick={handleUseSampleAccount}
-            className="text-subtle-text hover:text-electric-cyan transition-colors flex items-center gap-1.5 cursor-pointer"
+            className="text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer"
           >
-            <Sparkles size={14} />
-            <span>Load Registered Test Account</span>
+            <Sparkles size={13} className="text-blue-400" />
+            <span>Load sample candidate (sankar)</span>
           </button>
         </div>
-      </motion.div>
+      </div>
     </div>
   );
 }
