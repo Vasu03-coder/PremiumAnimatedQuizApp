@@ -42,10 +42,10 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
     }
   };
 
-  // Quick test filler for the user/evaluator
+  // Quick test filler for the user/evaluator (Dummy account that bypasses registration)
   const handleUseSampleAccount = () => {
-    setName('sankar');
-    setEmail('sunkar@gmail.com');
+    setName('Demo Student');
+    setEmail('demo@spark2026.com');
     setErrorMessage(null);
   };
 
@@ -139,16 +139,19 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
           </button>
         </form>
 
-        {/* Helpful sample account filler */}
-        <div className="mt-5 pt-4 border-t border-white/[0.08] flex items-center justify-center text-xs">
+        {/* Helpful dummy account filler */}
+        <div className="mt-5 pt-4 border-t border-white/[0.08] flex flex-col items-center gap-1.5 text-xs text-center">
           <button
             type="button"
             onClick={handleUseSampleAccount}
-            className="text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer"
+            className="text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer font-medium"
           >
             <Sparkles size={13} className="text-blue-400" />
-            <span>Load sample candidate (sankar)</span>
+            <span>Load Dummy Candidate (demo@spark2026.com)</span>
           </button>
+          <span className="text-[11px] text-slate-500">
+            Dummy user bypasses registration • Other emails require registered symposium ID
+          </span>
         </div>
       </div>
     </div>

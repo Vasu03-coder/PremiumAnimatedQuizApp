@@ -15,6 +15,15 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 // Technical Quiz Event ID from public.events
 export const TECHNICAL_QUIZ_EVENT_ID = '1b16c6ae-d13d-4a00-bf1e-b95b780c7f32';
 
+// Whitelisted dummy/demo test accounts that bypass Supabase table registration
+const DUMMY_EMAILS = [
+  'demo@spark2026.com',
+  'sunkar@gmail.com',
+  'dummy@spark2026.com',
+  'guest@spark2026.com',
+  'demo@sparktron.com',
+];
+
 /**
  * Verify if the student is registered for the symposium and has Technical Quiz selected
  * Does NOT alter or modify any existing table!
@@ -25,9 +34,27 @@ export async function verifyStudentRegistration(
 ): Promise<{ success: boolean; student?: StudentProfile; message?: string }> {
   try {
     const cleanEmail = email.trim().toLowerCase();
-    const cleanName = name.trim().toLowerCase();
+    const cleanName = name.trim();
 
-    // Query participants matching email (ilike for case-insensitivity)
+    // 1. Check if using the designated dummy/demo student account
+    if (DUMMY_EMAILS.includes(cleanEmail)) {
+      return {
+        success: true,
+        student: {
+          id: 'demo-student-id',
+          registration_id: 'e22e519e-demo-4f7f-a65c-6b1104e76a16',
+          registration_code: 'SPARK-DEMO-2026',
+          full_name: cleanName || 'Demo Student',
+          email: cleanEmail,
+          college: 'SPARKTRON Institute of Technology',
+          department: 'ECE',
+          phone: '9876543210',
+          is_verified: true,
+        },
+      };
+    }
+
+    // 2. For ALL other email IDs, strictly query participants matching email
     const { data: participants, error } = await supabase
       .from('participants')
       .select('id, registration_id, full_name, email, phone, college, department, is_team_leader')

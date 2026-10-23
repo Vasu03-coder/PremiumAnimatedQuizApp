@@ -230,6 +230,20 @@ export default function App() {
               </div>
             </div>
 
+            {route === 'student_login' && (
+              <button
+                type="button"
+                onClick={() => {
+                  window.history.pushState({}, '', '?admin');
+                  setRoute(isAdminAuthenticated ? 'admin_dashboard' : 'admin_login');
+                }}
+                className="text-xs text-slate-400 hover:text-white px-3 py-1.5 rounded-lg border border-slate-800 hover:border-slate-700 hover:bg-slate-800/50 transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <ShieldCheck size={14} className="text-blue-400" />
+                <span>Admin Portal</span>
+              </button>
+            )}
+
             {route === 'admin_login' && (
               <button
                 type="button"
@@ -312,8 +326,20 @@ export default function App() {
         </main>
 
         {/* Footer */}
-        <footer className="w-full py-4 text-center text-xs font-mono text-subtle-text border-t border-white/5">
-          SPARKTRON 2026 • Controlled ECE Assessment Platform • All Rights Reserved
+        <footer className="w-full py-4 text-xs font-mono text-subtle-text border-t border-white/5">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-2">
+            <span>SPARKTRON 2026 • Controlled ECE Assessment Platform • All Rights Reserved</span>
+            <button
+              type="button"
+              onClick={() => {
+                window.history.pushState({}, '', '?admin');
+                setRoute(isAdminAuthenticated ? 'admin_dashboard' : 'admin_login');
+              }}
+              className="text-slate-500 hover:text-blue-400 transition-colors cursor-pointer text-[11px]"
+            >
+              Admin Portal →
+            </button>
+          </div>
         </footer>
       </div>
     </ErrorBoundary>
