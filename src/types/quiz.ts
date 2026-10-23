@@ -11,12 +11,21 @@ export interface StudentProfile {
   id?: string;
   registration_id?: string;
   registration_code?: string;
+  passcode?: string;
   full_name: string;
   email: string;
   college?: string;
   department?: string;
   phone?: string;
   is_verified?: boolean;
+  is_demo?: boolean;
+}
+
+export interface QuizScheduleConfig {
+  scheduledStartTime: string | null; // ISO timestamp or null if started
+  isQuizActive: boolean;
+  durationMinutes?: number;
+  message?: string;
 }
 
 export interface ProctoringViolation {

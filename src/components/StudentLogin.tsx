@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { ShieldCheck, Mail, User, AlertCircle, ArrowRight, Loader2, Sparkles, Lock } from 'lucide-react';
-import { verifyStudentRegistration } from '../lib/supabase';
+import { KeyRound, ShieldCheck, AlertCircle, ArrowRight, Loader2, Sparkles, User, CheckCircle2 } from 'lucide-react';
+import { verifyStudentByPasscode, PREDEFINED_PASSCODES } from '../lib/supabase';
 import type { StudentProfile } from '../types/quiz';
 
 interface StudentLoginProps {
@@ -9,15 +9,18 @@ interface StudentLoginProps {
 }
 
 export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  const [passcode, setPasscode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Check if current typed passcode matches a known candidate to display preview
+  const normalized = passcode.trim().toUpperCase();
+  const matchedPreview = PREDEFINED_PASSCODES[normalized];
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !email.trim()) {
-      setErrorMessage('Please provide both your full name and registered email address.');
+    if (!passcode.trim()) {
+      setErrorMessage('Please enter your candidate assessment passcode.');
       return;
     }
 
@@ -25,14 +28,14 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
     setErrorMessage(null);
 
     try {
-      const result = await verifyStudentRegistration(email, name);
+      const result = await verifyStudentByPasscode(passcode);
 
       if (result.success && result.student) {
         onLoginSuccess(result.student);
       } else {
         setErrorMessage(
           result.message ||
-            'Registration not verified. Only candidates who registered and selected Technical Quiz on the symposium website can enter.'
+            'Invalid Passcode. Only candidates registered for the SPARKTRON Technical Quiz can enter.'
         );
       }
     } catch (err) {
@@ -42,10 +45,15 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
     }
   };
 
-  // Quick test filler for the user/evaluator (Dummy account that bypasses registration)
-  const handleUseSampleAccount = () => {
-    setName('Demo Student');
-    setEmail('demo@spark2026.com');
+  // Quick test filler for Demo User (Bypasses Start Timer)
+  const handleUseDemoPasscode = () => {
+    setPasscode('DEMO2026');
+    setErrorMessage(null);
+  };
+
+  // Quick test filler for Official Candidate (Subject to Start Timer)
+  const handleUseOfficialPasscode = () => {
+    setPasscode('SPARK-ECE-101');
     setErrorMessage(null);
   };
 
@@ -61,7 +69,7 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
             Student Assessment Portal
           </h2>
           <p className="text-xs sm:text-sm text-slate-400 font-normal max-w-xs mx-auto leading-relaxed">
-            SPARKTRON 2026 Technical Quiz • Controlled Examination
+            SPARKTRON 2026 Technical Quiz • Passcode Protected Examination
           </p>
         </div>
 
@@ -76,48 +84,58 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
           </div>
         )}
 
-        {/* Form - Only Name & Email */}
+        {/* Form - Candidate Passcode */}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-medium text-slate-300 mb-1.5">
-              Full Name
+              Candidate Assessment Passcode
             </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
-                <User size={16} />
+                <KeyRound size={16} />
               </div>
               <input
                 type="text"
                 required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Sankar Raja"
-                className="w-full minimal-input rounded-xl pl-9 pr-3.5 py-2.5 text-sm focus:outline-none"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1.5">
-              Registered Email Address
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
-                <Mail size={16} />
-              </div>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="e.g. candidate@domain.com"
-                className="w-full minimal-input rounded-xl pl-9 pr-3.5 py-2.5 text-sm focus:outline-none"
+                value={passcode}
+                onChange={(e) => {
+                  setPasscode(e.target.value);
+                  if (errorMessage) setErrorMessage(null);
+                }}
+                placeholder="e.g. SPARK-ECE-101 or DEMO2026"
+                className="w-full minimal-input rounded-xl pl-9 pr-3.5 py-2.5 text-sm uppercase tracking-wider font-mono focus:outline-none"
               />
             </div>
             <p className="text-[11px] text-slate-500 mt-1.5">
-              * Must match your symposium registered email
+              * Enter the unique passcode provided with your registration
             </p>
           </div>
+
+          {/* Connected Email Preview Badge (if matched) */}
+          {matchedPreview && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs flex items-center justify-between text-slate-300"
+            >
+              <div className="flex items-center gap-2">
+                <CheckCircle2 size={15} className="text-blue-400 shrink-0" />
+                <div>
+                  <div className="font-semibold text-white">{matchedPreview.fullName}</div>
+                  <div className="text-[11px] text-slate-400 font-mono">{matchedPreview.email}</div>
+                </div>
+              </div>
+              {matchedPreview.isDemo ? (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Timer Bypassed
+                </span>
+              ) : (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                  Connected
+                </span>
+              )}
+            </motion.div>
+          )}
 
           {/* Submit Button */}
           <button
@@ -128,7 +146,7 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
             {isLoading ? (
               <>
                 <Loader2 size={16} className="animate-spin text-white" />
-                <span>Verifying Registration...</span>
+                <span>Verifying Passcode...</span>
               </>
             ) : (
               <>
@@ -139,19 +157,43 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
           </button>
         </form>
 
-        {/* Helpful dummy account filler */}
-        <div className="mt-5 pt-4 border-t border-white/[0.08] flex flex-col items-center gap-1.5 text-xs text-center">
-          <button
-            type="button"
-            onClick={handleUseSampleAccount}
-            className="text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer font-medium"
-          >
-            <Sparkles size={13} className="text-blue-400" />
-            <span>Load Dummy Candidate (demo@spark2026.com)</span>
-          </button>
-          <span className="text-[11px] text-slate-500">
-            Dummy user bypasses registration • Other emails require registered symposium ID
-          </span>
+        {/* Quick Testing Passcode Fillers */}
+        <div className="mt-5 pt-4 border-t border-white/[0.08] space-y-2 text-xs">
+          <div className="text-[11px] text-slate-400 font-medium text-center mb-1">
+            Test Passcode Fillers:
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {/* Demo Tester button (Bypasses Timer) */}
+            <button
+              type="button"
+              onClick={handleUseDemoPasscode}
+              className="text-left p-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 text-emerald-300 transition-all cursor-pointer"
+            >
+              <div className="flex items-center gap-1.5 font-semibold text-xs">
+                <Sparkles size={12} className="text-emerald-400" />
+                <span>DEMO2026 (Demo Tester)</span>
+              </div>
+              <div className="text-[10px] text-emerald-400/80 mt-0.5">
+                ★ Bypasses start timer (Instant quiz)
+              </div>
+            </button>
+
+            {/* Official Candidate button (Subject to Timer) */}
+            <button
+              type="button"
+              onClick={handleUseOfficialPasscode}
+              className="text-left p-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/25 text-blue-300 transition-all cursor-pointer"
+            >
+              <div className="flex items-center gap-1.5 font-semibold text-xs">
+                <User size={12} className="text-blue-400" />
+                <span>SPARK-ECE-101 (Candidate)</span>
+              </div>
+              <div className="text-[10px] text-blue-400/80 mt-0.5">
+                Connected to: sunkar@gmail.com
+              </div>
+            </button>
+          </div>
         </div>
       </div>
     </div>

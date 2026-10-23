@@ -26,7 +26,11 @@ import {
   Unlock,
   Eye,
   Clock,
-  UserX
+  UserX,
+  KeyRound,
+  Copy,
+  Play,
+  Timer
 } from 'lucide-react';
 import type { Question, LiveStudentStatus, ProctoringViolation, QuizSubmission } from '../../types/quiz';
 import {
@@ -37,6 +41,10 @@ import {
   broadcastAdminAnnouncement,
   broadcastResetStudent,
   broadcastQuizStatus,
+  broadcastQuizSchedule,
+  getQuizSchedule,
+  PREDEFINED_PASSCODES,
+  type QuizSchedulePayload,
 } from '../../lib/supabase';
 
 interface AdminDashboardProps {
@@ -119,6 +127,77 @@ export default function AdminDashboard({
   // Admin Broadcast Announcement State
   const [announcementText, setAnnouncementText] = useState('');
   const [isQuizLocked, setIsQuizLocked] = useState(false);
+
+  // Synchronized Quiz Start Schedule Controller
+  const [schedule, setSchedule] = useState<QuizSchedulePayload>(() => getQuizSchedule());
+  const [remainingStartSeconds, setRemainingStartSeconds] = useState<number>(() => {
+    const sched = getQuizSchedule();
+    if (!sched.scheduledStartTime) return 0;
+    return Math.max(0, Math.floor((new Date(sched.scheduledStartTime).getTime() - Date.now()) / 1000));
+  });
+  const [customStartMinutes, setCustomStartMinutes] = useState<string>('5');
+  const [copiedPasscode, setCopiedPasscode] = useState<string | null>(null);
+
+  useEffect(() => {
+    const updateCountdown = () => {
+      const cur = getQuizSchedule();
+      if (!cur.scheduledStartTime) {
+        setRemainingStartSeconds(0);
+        return;
+      }
+      const diff = Math.floor((new Date(cur.scheduledStartTime).getTime() - Date.now()) / 1000);
+      setRemainingStartSeconds(Math.max(0, diff));
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, [schedule.scheduledStartTime]);
+
+  const handleSetScheduleMinutes = (mins: number) => {
+    const targetTime = new Date(Date.now() + mins * 60 * 1000).toISOString();
+    const payload: QuizSchedulePayload = {
+      scheduledStartTime: targetTime,
+      isQuizActive: true,
+      durationMinutes: mins,
+      message: `Quiz scheduled to start in ${mins} minute(s)`,
+    };
+    setSchedule(payload);
+    setIsQuizLocked(false);
+    broadcastQuizSchedule(payload);
+    showToast(`⏱️ Start timer set: Quiz will unlock in ${mins} minute(s)!`);
+  };
+
+  const handleStartImmediately = () => {
+    const payload: QuizSchedulePayload = {
+      scheduledStartTime: null,
+      isQuizActive: true,
+      message: 'Quiz started immediately by Administrator!',
+    };
+    setSchedule(payload);
+    setIsQuizLocked(false);
+    broadcastQuizSchedule(payload);
+    showToast('🚀 Quiz launched immediately! All candidate waiting rooms unlocked.');
+  };
+
+  const handlePauseQuiz = () => {
+    const payload: QuizSchedulePayload = {
+      ...schedule,
+      isQuizActive: false,
+      message: 'Quiz has been paused by Administrator.',
+    };
+    setSchedule(payload);
+    setIsQuizLocked(true);
+    broadcastQuizSchedule(payload);
+    showToast('⏸ Quiz paused for all candidates.');
+  };
+
+  const handleCopyPasscode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    setCopiedPasscode(code);
+    showToast(`Passcode "${code}" copied to clipboard!`);
+    setTimeout(() => setCopiedPasscode(null), 2000);
+  };
 
   const toggleTheme = () => {
     const nextTheme = theme === 'light' ? 'dark' : 'light';
@@ -647,6 +726,161 @@ export default function AdminDashboard({
           </div>
         </div>
 
+        {/* SYNCHRONIZED QUIZ START & COUNTDOWN CONTROLLER CARD */}
+        <div className={`${cardClass} rounded-xl p-4 sm:p-5 mb-6 border transition-all ${
+          !schedule.isQuizActive
+            ? isLight ? 'border-amber-300 bg-amber-50/50' : 'border-amber-500/40 bg-amber-950/20'
+            : schedule.scheduledStartTime && remainingStartSeconds > 0
+            ? isLight ? 'border-blue-300 bg-blue-50/40' : 'border-blue-500/40 bg-blue-950/20'
+            : isLight ? 'border-emerald-200 bg-emerald-50/30' : 'border-emerald-500/30 bg-emerald-950/20'
+        }`}>
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+            {/* Status & Description */}
+            <div className="flex items-start gap-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                !schedule.isQuizActive
+                  ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
+                  : schedule.scheduledStartTime && remainingStartSeconds > 0
+                  ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30'
+                  : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+              }`}>
+                <Clock size={20} className={schedule.scheduledStartTime && remainingStartSeconds > 0 ? 'animate-pulse' : ''} />
+              </div>
+
+              <div>
+                <div className="flex items-center gap-2">
+                  <h3 className={`text-sm sm:text-base font-bold ${textPrimary}`}>
+                    Synchronized Quiz Start & Waiting Room Controller
+                  </h3>
+                  {/* Status Pill */}
+                  {!schedule.isQuizActive ? (
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 font-semibold flex items-center gap-1">
+                      <Lock size={10} /> QUIZ PAUSED
+                    </span>
+                  ) : schedule.scheduledStartTime && remainingStartSeconds > 0 ? (
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 font-semibold flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />
+                      COUNTDOWN ACTIVE
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-semibold flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      LIVE & UNLOCKED
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 mt-1">
+                  {schedule.scheduledStartTime && remainingStartSeconds > 0 ? (
+                    <div className="text-xs font-mono font-bold text-blue-400 flex flex-wrap items-center gap-1.5">
+                      <span>Candidates waiting:</span>
+                      <span className="text-sm px-2 py-0.5 rounded bg-blue-900/60 border border-blue-500/40 text-blue-200">
+                        {String(Math.floor(remainingStartSeconds / 60)).padStart(2, '0')}:
+                        {String(remainingStartSeconds % 60).padStart(2, '0')} remaining
+                      </span>
+                      <span className="text-[11px] text-slate-400 font-sans">
+                        (Target: {new Date(schedule.scheduledStartTime).toLocaleTimeString()})
+                      </span>
+                    </div>
+                  ) : (
+                    <p className={`text-xs ${textMuted}`}>
+                      Controls when candidates can see and answer quiz questions. Demo accounts bypass this timer automatically.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Controller Action Buttons */}
+            <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+              {/* Start Immediately */}
+              <button
+                type="button"
+                onClick={handleStartImmediately}
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+                title="Unlock immediately for all logged-in candidates"
+              >
+                <Play size={13} fill="currentColor" />
+                <span>Start Now (Unlock)</span>
+              </button>
+
+              {/* Presets */}
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => handleSetScheduleMinutes(1)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer ${buttonSecondary}`}
+                  title="Schedule start in 1 minute"
+                >
+                  +1m
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetScheduleMinutes(2)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer ${buttonSecondary}`}
+                  title="Schedule start in 2 minutes"
+                >
+                  +2m
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetScheduleMinutes(5)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer ${buttonSecondary}`}
+                  title="Schedule start in 5 minutes"
+                >
+                  +5m
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSetScheduleMinutes(10)}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer ${buttonSecondary}`}
+                  title="Schedule start in 10 minutes"
+                >
+                  +10m
+                </button>
+              </div>
+
+              {/* Custom Minutes Input */}
+              <div className="flex items-center gap-1">
+                <input
+                  type="number"
+                  min="1"
+                  max="120"
+                  value={customStartMinutes}
+                  onChange={(e) => setCustomStartMinutes(e.target.value)}
+                  className={`w-14 rounded-lg px-2 py-1.5 text-xs text-center font-mono ${inputClass}`}
+                  placeholder="Mins"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const m = parseInt(customStartMinutes, 10);
+                    if (!isNaN(m) && m > 0) handleSetScheduleMinutes(m);
+                  }}
+                  className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer ${buttonSecondary}`}
+                >
+                  Set
+                </button>
+              </div>
+
+              {/* Pause Quiz */}
+              <button
+                type="button"
+                onClick={handlePauseQuiz}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-all cursor-pointer ${
+                  isLight
+                    ? 'bg-amber-100 text-amber-800 border-amber-300 hover:bg-amber-200'
+                    : 'bg-amber-950/40 text-amber-300 border-amber-800/60 hover:bg-amber-900/40'
+                }`}
+                title="Freeze candidate screens"
+              >
+                <Lock size={12} />
+                <span>Pause</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* Live Broadcast Control Bar */}
         <div className={`${cardClass} rounded-xl p-3.5 mb-6 flex flex-col sm:flex-row items-center justify-between gap-3`}>
           <div className={`flex items-center gap-2 text-xs font-semibold ${isLight ? 'text-blue-700' : 'text-blue-400'} shrink-0`}>
@@ -857,6 +1091,49 @@ export default function AdminDashboard({
                               <span>•</span>
                               <span className="font-mono">{student.email}</span>
                             </div>
+
+                            {/* Candidate Passcode Badge with 1-click Copy */}
+                            {(() => {
+                              const matchedPasscodeEntry = Object.values(PREDEFINED_PASSCODES).find(
+                                (p) => p.email.toLowerCase() === student.email.toLowerCase()
+                              );
+                              const candidatePasscode =
+                                matchedPasscodeEntry?.passcode || (student as any).passcode || 'SPARK-ECE-101';
+                              const isDemoCandidate = matchedPasscodeEntry?.isDemo || false;
+
+                              return (
+                                <div className="flex flex-wrap items-center gap-2 mt-2">
+                                  <span className="text-[11px] font-mono text-slate-400">Passcode:</span>
+                                  <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/30 flex items-center gap-1">
+                                    <KeyRound size={11} />
+                                    {candidatePasscode}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyPasscode(candidatePasscode)}
+                                    className="text-[10px] px-2 py-0.5 rounded border border-slate-700/60 hover:bg-slate-800 text-slate-300 flex items-center gap-1 cursor-pointer transition-colors"
+                                    title="Copy passcode for candidate"
+                                  >
+                                    {copiedPasscode === candidatePasscode ? (
+                                      <>
+                                        <Check size={10} className="text-emerald-400" />
+                                        <span className="text-emerald-400 font-medium">Copied!</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Copy size={10} className="text-slate-400" />
+                                        <span>Copy</span>
+                                      </>
+                                    )}
+                                  </button>
+                                  {isDemoCandidate && (
+                                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/30 font-medium">
+                                      Demo (Bypasses Start Timer)
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })()}
                           </div>
                         </div>
 

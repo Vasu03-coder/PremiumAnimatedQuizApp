@@ -33,6 +33,13 @@ const checkIsAdminUrl = (): boolean => {
   );
 };
 
+const checkIsDemoUrl = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const s = (window.location.search || '').toLowerCase();
+  const h = (window.location.hash || '').toLowerCase();
+  return s.includes('demo') || h.includes('demo');
+};
+
 export default function App() {
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false;
@@ -46,7 +53,7 @@ export default function App() {
         (typeof window !== 'undefined' && window.location.search.includes('preview=dashboard'));
       return isAuth ? 'admin_dashboard' : 'admin_login';
     }
-    if (typeof window !== 'undefined' && window.location.search.includes('preview=quiz')) {
+    if (typeof window !== 'undefined' && (checkIsDemoUrl() || window.location.search.includes('preview=quiz'))) {
       return 'quiz_session';
     }
     return 'student_login';
@@ -54,21 +61,37 @@ export default function App() {
 
   const [questions, setQuestions] = useState<Question[]>(INITIAL_QUESTIONS);
   const [activeStudent, setActiveStudent] = useState<StudentProfile | null>(() => {
+    if (typeof window !== 'undefined' && checkIsDemoUrl()) {
+      return {
+        id: 'demo-tester-id',
+        registration_id: 'reg-demo-2026',
+        registration_code: 'DEMO2026',
+        passcode: 'DEMO2026',
+        full_name: 'Demo Candidate (Tester)',
+        email: 'demo@spark2026.com',
+        college: 'SPARKTRON Institute of Technology',
+        department: 'ECE',
+        is_verified: true,
+        is_demo: true,
+      };
+    }
     if (typeof window !== 'undefined' && window.location.search.includes('preview=quiz')) {
       return {
         id: 'preview-sankar',
         registration_id: 'e22e519e-e092-4f7f-a65c-6b1104e76a16',
-        registration_code: 'SPARK-ECE-01',
+        registration_code: 'SPARK-ECE-101',
+        passcode: 'SPARK-ECE-101',
         full_name: 'Sankar',
         email: 'sunkar@gmail.com',
         college: 'ECE Department',
         is_verified: true,
+        is_demo: false,
       };
     }
     return null;
   });
   const [sessionQuestions, setSessionQuestions] = useState<Question[]>(() => {
-    if (typeof window !== 'undefined' && window.location.search.includes('preview=quiz')) {
+    if (typeof window !== 'undefined' && (checkIsDemoUrl() || window.location.search.includes('preview=quiz'))) {
       return INITIAL_QUESTIONS;
     }
     return [];
@@ -103,6 +126,21 @@ export default function App() {
           window.location.search.includes('preview=dashboard');
         setIsAdminAuthenticated(isAuth);
         setRoute(isAuth ? 'admin_dashboard' : 'admin_login');
+      } else if (checkIsDemoUrl()) {
+        setActiveStudent({
+          id: 'demo-tester-id',
+          registration_id: 'reg-demo-2026',
+          registration_code: 'DEMO2026',
+          passcode: 'DEMO2026',
+          full_name: 'Demo Candidate (Tester)',
+          email: 'demo@spark2026.com',
+          college: 'SPARKTRON Institute of Technology',
+          department: 'ECE',
+          is_verified: true,
+          is_demo: true,
+        });
+        setSessionQuestions(INITIAL_QUESTIONS);
+        setRoute('quiz_session');
       } else {
         setRoute((prev) => (prev.startsWith('admin') ? 'student_login' : prev));
       }
