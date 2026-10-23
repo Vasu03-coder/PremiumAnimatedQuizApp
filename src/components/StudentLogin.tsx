@@ -50,8 +50,8 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
   };
 
   return (
-    <div className="w-full max-w-md mx-auto px-4">
-      <div className="surface-card rounded-2xl p-6 sm:p-8 relative">
+    <div className="w-full max-w-md mx-auto px-2.5 sm:px-4">
+      <div className="surface-card rounded-xl sm:rounded-2xl p-4 sm:p-8 relative">
         {/* Header */}
         <div className="text-center mb-7">
           <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 mb-3">

@@ -257,7 +257,7 @@ export default function App() {
         </header>
 
         {/* Main Content Area */}
-        <main className="flex-1 flex items-center justify-center py-6 sm:py-8 relative z-10">
+        <main className="flex-1 flex items-center justify-center py-2 sm:py-8 px-1 sm:px-0 relative z-10">
           <AnimatePresence mode="wait">
             {route === 'student_login' && (
               <motion.div

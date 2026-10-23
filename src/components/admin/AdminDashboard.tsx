@@ -50,12 +50,14 @@ export default function AdminDashboard({
   onUpdateQuestions,
   onLogout,
 }: AdminDashboardProps) {
-  // Theme state: default is 'light' (white theme)
+  // Theme state: default is 'dark' (black command center theme)
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
     if (typeof window !== 'undefined') {
-      return (localStorage.getItem('spark_admin_theme') as 'light' | 'dark') || 'light';
+      const saved = localStorage.getItem('spark_admin_theme') as 'light' | 'dark' | null;
+      if (saved === 'light' || saved === 'dark') return saved;
+      return 'dark'; // Default to black/dark theme
     }
-    return 'light';
+    return 'dark';
   });
 
   const [activeTab, setActiveTab] = useState<'leaderboard' | 'proctoring' | 'questions'>(() => {
@@ -464,22 +466,26 @@ export default function AdminDashboard({
     showToast('Question deleted successfully.');
   };
 
-  // Theme Tokens
+  // Theme Tokens - Cohesive, premium design system for both dark and light modes
   const isLight = theme === 'light';
   const containerClass = isLight
-    ? 'bg-slate-50 text-slate-900 min-h-screen'
-    : 'bg-[#0A101D] text-slate-100 min-h-screen';
+    ? 'bg-slate-100 text-slate-900 min-h-screen font-sans selection:bg-blue-500/20'
+    : 'bg-[#090d16] text-slate-100 min-h-screen font-sans selection:bg-blue-500/30';
   const cardClass = isLight
-    ? 'bg-white border border-slate-200/90 shadow-sm shadow-slate-100'
-    : 'bg-[#111A2E] border border-white/10 shadow-lg';
+    ? 'bg-white border border-slate-200 shadow-sm'
+    : 'bg-[#0f172a] border border-slate-800 shadow-xl';
   const headerClass = isLight
-    ? 'bg-white border-b border-slate-200'
-    : 'bg-[#0E1626] border-b border-white/10';
+    ? 'bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs'
+    : 'bg-[#0b1120]/95 backdrop-blur-md border-b border-slate-800';
   const textPrimary = isLight ? 'text-slate-900' : 'text-white';
+  const textSecondary = isLight ? 'text-slate-700' : 'text-slate-300';
   const textMuted = isLight ? 'text-slate-500' : 'text-slate-400';
   const inputClass = isLight
-    ? 'bg-slate-50 border border-slate-200 text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500'
-    : 'bg-[#0A101D] border border-white/15 text-white focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400';
+    ? 'bg-white border border-slate-300 text-slate-900 placeholder:text-slate-400 focus:border-blue-600 focus:ring-1 focus:ring-blue-600'
+    : 'bg-slate-950/80 border border-slate-700 text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-1 focus:ring-blue-500';
+  const buttonSecondary = isLight
+    ? 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 shadow-xs'
+    : 'bg-slate-800/80 hover:bg-slate-800 text-slate-200 border border-slate-700 shadow-xs';
 
   return (
     <div className={containerClass}>
@@ -503,7 +509,9 @@ export default function AdminDashboard({
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2.5 mb-1">
-              <span className="font-semibold text-xs tracking-wider uppercase px-2.5 py-0.5 rounded-md bg-indigo-500/10 text-indigo-600 font-mono">
+              <span className={`font-semibold text-xs tracking-wider uppercase px-2.5 py-0.5 rounded-md font-mono border ${
+                isLight ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+              }`}>
                 Technical Quiz Portal
               </span>
               <span className="text-xs font-mono text-slate-400 flex items-center gap-1.5">
@@ -525,14 +533,16 @@ export default function AdminDashboard({
               onClick={handleToggleQuizLock}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-all cursor-pointer ${
                 isQuizLocked
-                  ? 'bg-amber-50 border-amber-300 text-amber-800'
+                  ? isLight
+                    ? 'bg-amber-50 border-amber-300 text-amber-800'
+                    : 'bg-amber-950/40 border-amber-500/50 text-amber-300'
                   : isLight
-                  ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                  : 'bg-[#162238] border-white/15 text-slate-200'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
+                  : 'bg-emerald-950/30 border-emerald-500/40 text-emerald-300 hover:bg-emerald-950/50'
               }`}
               title={isQuizLocked ? 'Click to Unlock Quiz' : 'Click to Pause Quiz'}
             >
-              {isQuizLocked ? <Lock size={13} className="text-amber-600" /> : <Unlock size={13} />}
+              {isQuizLocked ? <Lock size={13} className="text-amber-500" /> : <Unlock size={13} className="text-emerald-500" />}
               <span>{isQuizLocked ? 'Quiz Paused' : 'Quiz Active'}</span>
             </button>
 
@@ -540,15 +550,11 @@ export default function AdminDashboard({
             <button
               type="button"
               onClick={toggleTheme}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-all cursor-pointer ${
-                isLight
-                  ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                  : 'bg-[#162238] border-white/15 text-slate-200 hover:bg-[#1E2E4A]'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-all cursor-pointer ${buttonSecondary}`}
             >
               {isLight ? (
                 <>
-                  <Moon size={13} className="text-indigo-600" />
+                  <Moon size={13} className="text-slate-700" />
                   <span>Dark Mode</span>
                 </>
               ) : (
@@ -562,20 +568,20 @@ export default function AdminDashboard({
             <button
               type="button"
               onClick={handleExportCSV}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-all cursor-pointer ${
-                isLight
-                  ? 'bg-white border-slate-200 text-slate-700 hover:bg-slate-100'
-                  : 'bg-[#162238] border-white/15 text-slate-200 hover:bg-[#1E2E4A]'
-              }`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-all cursor-pointer ${buttonSecondary}`}
             >
-              <Download size={13} />
+              <Download size={13} className="text-slate-400" />
               <span>Export CSV</span>
             </button>
 
             <button
               type="button"
               onClick={onLogout}
-              className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition-all flex items-center gap-1.5 cursor-pointer font-sans"
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-all cursor-pointer ${
+                isLight
+                  ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100'
+                  : 'bg-rose-950/40 text-rose-300 border-rose-800/60 hover:bg-rose-900/40'
+              }`}
             >
               <LogOut size={13} />
               <span>Exit Admin</span>
@@ -587,11 +593,11 @@ export default function AdminDashboard({
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-8 py-6">
         {/* KPI Metrics */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4 mb-6">
           <div className={`${cardClass} rounded-xl p-4 transition-colors duration-200`}>
             <div className="flex items-center justify-between text-xs font-mono mb-1.5 text-slate-400">
               <span className="uppercase tracking-wider">Eligible Candidates</span>
-              <Users size={15} className="text-indigo-500" />
+              <Users size={15} className={isLight ? 'text-blue-600' : 'text-blue-400'} />
             </div>
             <div className={`text-2xl sm:text-3xl font-bold font-mono ${textPrimary}`}>
               {totalEligible}
@@ -606,7 +612,7 @@ export default function AdminDashboard({
               <span className="uppercase tracking-wider">Online Right Now</span>
               <Radio size={15} className={activeCount > 0 ? 'text-emerald-500 animate-pulse' : 'text-slate-400'} />
             </div>
-            <div className="text-2xl sm:text-3xl font-bold font-mono text-emerald-600">
+            <div className={`text-2xl sm:text-3xl font-bold font-mono ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
               {activeCount}
             </div>
             <div className="text-[11px] text-slate-400 mt-1 font-mono">
@@ -617,9 +623,9 @@ export default function AdminDashboard({
           <div className={`${cardClass} rounded-xl p-4 transition-colors duration-200`}>
             <div className="flex items-center justify-between text-xs font-mono mb-1.5 text-slate-400">
               <span className="uppercase tracking-wider">Completed Test</span>
-              <CheckCircle2 size={15} className="text-blue-500" />
+              <CheckCircle2 size={15} className={isLight ? 'text-blue-600' : 'text-blue-400'} />
             </div>
-            <div className="text-2xl sm:text-3xl font-bold font-mono text-blue-600">
+            <div className={`text-2xl sm:text-3xl font-bold font-mono ${isLight ? 'text-blue-600' : 'text-blue-400'}`}>
               {completedCount}
             </div>
             <div className="text-[11px] text-slate-400 mt-1 font-mono">
@@ -630,9 +636,9 @@ export default function AdminDashboard({
           <div className={`${cardClass} rounded-xl p-4 transition-colors duration-200`}>
             <div className="flex items-center justify-between text-xs font-mono mb-1.5 text-slate-400">
               <span className="uppercase tracking-wider">Proctoring Alerts</span>
-              <ShieldAlert size={15} className="text-amber-500" />
+              <ShieldAlert size={15} className={isLight ? 'text-amber-600' : 'text-amber-400'} />
             </div>
-            <div className="text-2xl sm:text-3xl font-bold font-mono text-amber-600">
+            <div className={`text-2xl sm:text-3xl font-bold font-mono ${isLight ? 'text-amber-600' : 'text-amber-400'}`}>
               {violations.length}
             </div>
             <div className="text-[11px] text-slate-400 mt-1 font-mono">
@@ -643,7 +649,7 @@ export default function AdminDashboard({
 
         {/* Live Broadcast Control Bar */}
         <div className={`${cardClass} rounded-xl p-3.5 mb-6 flex flex-col sm:flex-row items-center justify-between gap-3`}>
-          <div className="flex items-center gap-2 text-xs font-semibold text-indigo-600 shrink-0">
+          <div className={`flex items-center gap-2 text-xs font-semibold ${isLight ? 'text-blue-700' : 'text-blue-400'} shrink-0`}>
             <Megaphone size={16} />
             <span>Broadcast Live Message to Students:</span>
           </div>
@@ -657,7 +663,7 @@ export default function AdminDashboard({
             />
             <button
               type="submit"
-              className="px-3 py-1.5 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 cursor-pointer font-sans shrink-0"
+              className="px-4 py-1.5 rounded-lg text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 shadow-sm transition-all cursor-pointer font-sans shrink-0"
             >
               Send
             </button>
@@ -665,16 +671,16 @@ export default function AdminDashboard({
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex items-center gap-2 mb-6 border-b border-slate-200 pb-3 overflow-x-auto">
+        <div className={`flex items-center gap-2 mb-6 border-b pb-3 overflow-x-auto ${isLight ? 'border-slate-200' : 'border-slate-800'}`}>
           <button
             type="button"
             onClick={() => setActiveTab('leaderboard')}
-            className={`px-4 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+            className={`px-3.5 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
               activeTab === 'leaderboard'
                 ? isLight
-                  ? 'bg-indigo-50 text-indigo-700 font-semibold border border-indigo-200'
-                  : 'bg-indigo-950/60 text-indigo-300 font-semibold border border-indigo-700/50'
-                : textMuted
+                  ? 'bg-blue-50 text-blue-700 font-semibold border border-blue-200 shadow-xs'
+                  : 'bg-blue-500/15 text-blue-400 font-semibold border border-blue-500/30'
+                : textMuted + (isLight ? ' hover:bg-slate-200/50 hover:text-slate-800' : ' hover:bg-slate-800/50 hover:text-slate-200')
             }`}
           >
             <Trophy size={14} />
@@ -684,12 +690,12 @@ export default function AdminDashboard({
           <button
             type="button"
             onClick={() => setActiveTab('proctoring')}
-            className={`px-4 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+            className={`px-3.5 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
               activeTab === 'proctoring'
                 ? isLight
-                  ? 'bg-amber-50 text-amber-700 font-semibold border border-amber-200'
-                  : 'bg-amber-950/60 text-amber-300 font-semibold border border-amber-700/50'
-                : textMuted
+                  ? 'bg-amber-50 text-amber-700 font-semibold border border-amber-200 shadow-xs'
+                  : 'bg-amber-500/15 text-amber-400 font-semibold border border-amber-500/30'
+                : textMuted + (isLight ? ' hover:bg-slate-200/50 hover:text-slate-800' : ' hover:bg-slate-800/50 hover:text-slate-200')
             }`}
           >
             <ShieldAlert size={14} />
@@ -699,12 +705,12 @@ export default function AdminDashboard({
           <button
             type="button"
             onClick={() => setActiveTab('questions')}
-            className={`px-4 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
+            className={`px-3.5 py-2 rounded-lg text-xs font-medium transition-all flex items-center gap-2 cursor-pointer shrink-0 ${
               activeTab === 'questions'
                 ? isLight
-                  ? 'bg-slate-100 text-slate-800 font-semibold border border-slate-300'
-                  : 'bg-white/10 text-white font-semibold border border-white/20'
-                : textMuted
+                  ? 'bg-blue-50 text-blue-700 font-semibold border border-blue-200 shadow-xs'
+                  : 'bg-blue-500/15 text-blue-400 font-semibold border border-blue-500/30'
+                : textMuted + (isLight ? ' hover:bg-slate-200/50 hover:text-slate-800' : ' hover:bg-slate-800/50 hover:text-slate-200')
             }`}
           >
             <HelpCircle size={14} />
@@ -803,23 +809,31 @@ export default function AdminDashboard({
                         className={`p-4 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all ${
                           isLight
                             ? isOnline
-                              ? 'bg-emerald-50/30 border-emerald-200 shadow-sm'
-                              : 'bg-white border-slate-200/80 hover:border-slate-300'
+                              ? 'bg-emerald-50/40 border-emerald-200 shadow-xs'
+                              : 'bg-white border-slate-200 hover:border-slate-300'
                             : isOnline
                             ? 'bg-emerald-950/20 border-emerald-500/40'
-                            : 'bg-[#151F36] border-white/10 hover:border-white/20'
+                            : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
                         }`}
                       >
                         <div className="flex items-center gap-3.5 flex-1">
                           <div
                             className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono font-bold text-xs shrink-0 ${
                               rank === 1
-                                ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                ? isLight
+                                  ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                                  : 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                                 : rank === 2
-                                ? 'bg-slate-200 text-slate-700 border border-slate-300'
+                                ? isLight
+                                  ? 'bg-slate-200 text-slate-700 border border-slate-300'
+                                  : 'bg-slate-800 text-slate-300 border border-slate-700'
                                 : rank === 3
-                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                                : 'bg-slate-100 text-slate-500'
+                                ? isLight
+                                  ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                  : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                : isLight
+                                ? 'bg-slate-100 text-slate-500'
+                                : 'bg-slate-850 text-slate-400'
                             }`}
                           >
                             #{rank}
@@ -832,7 +846,7 @@ export default function AdminDashboard({
                               </span>
                               {statusBadge}
                               {student.violationsCount > 0 && (
-                                <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700 border border-red-200 flex items-center gap-1">
+                                <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60 flex items-center gap-1">
                                   <AlertTriangle size={10} />
                                   {student.violationsCount} Flag(s)
                                 </span>
@@ -850,7 +864,7 @@ export default function AdminDashboard({
                         <div className="flex items-center gap-5 w-full sm:w-auto justify-between sm:justify-end">
                           <div className="text-left sm:text-right">
                             <div className="text-[10px] font-mono text-slate-400 uppercase">Progress</div>
-                            <div className={`text-xs font-mono font-medium ${isOnline ? 'text-emerald-600' : textMuted}`}>
+                            <div className={`text-xs font-mono font-medium ${isOnline ? 'text-emerald-500' : textMuted}`}>
                               {student.currentQuestion > 0 ? `Q ${student.currentQuestion} / ${student.totalQuestions}` : 'Not Started'}
                             </div>
                           </div>
@@ -867,7 +881,7 @@ export default function AdminDashboard({
                           <button
                             type="button"
                             onClick={() => handleResetStudent(student.email)}
-                            className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-500 hover:text-indigo-600 transition-colors cursor-pointer"
+                            className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${buttonSecondary}`}
                             title="Reset candidate session to allow re-test"
                           >
                             <RotateCcw size={14} />
@@ -903,19 +917,23 @@ export default function AdminDashboard({
                 {violations.map((v) => (
                   <div
                     key={v.id}
-                    className="p-3.5 rounded-xl bg-red-50 border border-red-200 text-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs"
+                    className={`p-3.5 rounded-xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs transition-colors ${
+                      isLight
+                        ? 'bg-rose-50/80 border-rose-200 text-slate-800'
+                        : 'bg-rose-950/20 border-rose-900/40 text-slate-200'
+                    }`}
                   >
                     <div className="flex items-start gap-2.5">
-                      <AlertTriangle size={16} className="text-red-500 shrink-0 mt-0.5" />
+                      <AlertTriangle size={16} className="text-rose-500 shrink-0 mt-0.5" />
                       <div>
-                        <span className="font-semibold text-slate-900">{v.studentName} </span>
-                        <span className="font-mono text-slate-500">({v.studentEmail})</span>
-                        <div className="text-red-700 mt-0.5 font-medium">
+                        <span className={`font-semibold ${textPrimary}`}>{v.studentName} </span>
+                        <span className={`font-mono ${textMuted}`}>({v.studentEmail})</span>
+                        <div className={`mt-0.5 font-medium ${isLight ? 'text-rose-700' : 'text-rose-300'}`}>
                           Violation: <strong className="uppercase">{v.violationType.replace('_', ' ')}</strong> on Question {v.questionIndex} • 0 Marks awarded
                         </div>
                       </div>
                     </div>
-                    <div className="font-mono text-slate-400 text-[11px] shrink-0">{v.timestamp}</div>
+                    <div className={`font-mono ${textMuted} text-[11px] shrink-0`}>{v.timestamp}</div>
                   </div>
                 ))}
               </div>
@@ -923,12 +941,12 @@ export default function AdminDashboard({
           </div>
         )}
 
-        {/* TAB 3: Question Bank - 2-COLUMN RESPONSIVE GRID & EDIT MODAL */}
+        {/* TAB 3: Question Bank - 2-COLUMN RESPONSIVE GRID */}
         {activeTab === 'questions' && (
           <div className={`${cardClass} rounded-xl p-6 transition-colors duration-200`}>
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
               <div>
-                <h2 className={`text-base font-bold ${textPrimary}`}>Quiz Question Bank (2-Column Grid)</h2>
+                <h2 className={`text-base font-bold ${textPrimary}`}>Quiz Question Bank ({questions.length} Questions)</h2>
                 <p className={`text-xs ${textMuted}`}>
                   Review, edit, add, or delete questions. Edits are synchronized directly with cloud storage.
                 </p>
@@ -937,143 +955,42 @@ export default function AdminDashboard({
               <button
                 type="button"
                 onClick={handleOpenAddQuestion}
-                className="px-3.5 py-2 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 transition-all flex items-center gap-1.5 cursor-pointer font-sans shadow-sm"
+                className="px-3.5 py-2 rounded-lg text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 transition-all flex items-center gap-1.5 cursor-pointer font-sans shadow-sm"
               >
                 <Plus size={14} />
                 <span>Add Question</span>
               </button>
             </div>
 
-            {/* Add / Edit Question Modal Drawer */}
-            {(isAddingQuestion || editingQuestion) && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mb-8 p-5 sm:p-6 rounded-2xl border-2 border-indigo-500/40 bg-indigo-50/30 shadow-lg space-y-4"
-              >
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-mono font-bold text-indigo-700 uppercase flex items-center gap-2">
-                    <Edit3 size={15} />
-                    {editingQuestion ? `Edit Question #${editingQuestion.id}` : 'Create New Technical Question'}
-                  </h3>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsAddingQuestion(false);
-                      setEditingQuestion(null);
-                    }}
-                    className="text-slate-400 hover:text-slate-600 cursor-pointer"
-                  >
-                    <X size={16} />
-                  </button>
-                </div>
-
-                <form onSubmit={handleSaveQuestion} className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs font-mono text-slate-500 uppercase mb-1">
-                        Question Prompt
-                      </label>
-                      <textarea
-                        required
-                        rows={2}
-                        value={formText}
-                        onChange={(e) => setFormText(e.target.value)}
-                        placeholder="e.g. In Boolean algebra, what is the value of A + A'B?"
-                        className={`w-full rounded-lg p-3 text-xs ${inputClass}`}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-mono text-slate-500 uppercase mb-1">
-                        Category / Subject
-                      </label>
-                      <input
-                        type="text"
-                        required
-                        value={formCategory}
-                        onChange={(e) => setFormCategory(e.target.value)}
-                        placeholder="e.g. Semiconductors"
-                        className={`w-full rounded-lg p-3 text-xs ${inputClass}`}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {formOptions.map((opt, i) => (
-                      <div key={i} className="p-2.5 rounded-lg border border-slate-200 bg-white">
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="text-[11px] font-mono text-slate-500 uppercase">
-                            Option {String.fromCharCode(65 + i)}
-                          </label>
-                          <label className="flex items-center gap-1 text-[11px] font-mono text-indigo-600 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="formCorrectRadio"
-                              checked={formCorrectAnswer === i}
-                              onChange={() => setFormCorrectAnswer(i)}
-                              className="text-indigo-600"
-                            />
-                            <span>{formCorrectAnswer === i ? 'Correct Answer' : 'Set Correct'}</span>
-                          </label>
-                        </div>
-                        <input
-                          type="text"
-                          required
-                          value={opt}
-                          onChange={(e) => {
-                            const updated = [...formOptions];
-                            updated[i] = e.target.value;
-                            setFormOptions(updated);
-                          }}
-                          placeholder={`Option ${String.fromCharCode(65 + i)} text`}
-                          className={`w-full rounded-md px-2.5 py-1.5 text-xs ${inputClass}`}
-                        />
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="flex justify-end gap-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsAddingQuestion(false);
-                        setEditingQuestion(null);
-                      }}
-                      className="px-4 py-2 rounded-lg text-xs font-medium border border-slate-300 text-slate-600 hover:bg-slate-100 cursor-pointer font-sans"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      className="px-5 py-2 rounded-lg text-xs font-medium text-white bg-indigo-600 hover:bg-indigo-700 shadow-sm cursor-pointer font-sans flex items-center gap-1.5"
-                    >
-                      <Check size={14} />
-                      <span>{editingQuestion ? 'Save & Sync Changes' : 'Create & Sync Question'}</span>
-                    </button>
-                  </div>
-                </form>
-              </motion.div>
-            )}
-
             {/* 2-COLUMN RESPONSIVE GRID FOR QUESTION CARDS */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {questions.map((q, idx) => (
                 <div
                   key={q.id}
-                  className={`p-5 rounded-2xl border flex flex-col justify-between transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5 ${
+                  className={`p-4 sm:p-5 rounded-xl border flex flex-col justify-between transition-all duration-200 ${
                     isLight
-                      ? 'bg-white border-slate-200/90 hover:border-indigo-300 shadow-xs'
-                      : 'bg-[#141E34] border-white/10 hover:border-cyan-500/40 shadow-md'
+                      ? 'bg-slate-50/70 border-slate-200 hover:border-slate-300 shadow-xs'
+                      : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 shadow-md'
                   }`}
                 >
                   <div>
                     {/* Card Header with Question Number, Category, and Action Buttons */}
-                    <div className="flex items-center justify-between gap-2 mb-3 pb-3 border-b border-slate-100 dark:border-white/10">
+                    <div className={`flex items-center justify-between gap-2 mb-3 pb-3 border-b ${
+                      isLight ? 'border-slate-200' : 'border-slate-800'
+                    }`}>
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-2.5 py-1 rounded-lg border border-indigo-200/60 dark:border-indigo-800/60">
+                        <span className={`font-mono text-xs font-bold px-2 py-0.5 rounded-md border ${
+                          isLight
+                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                            : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                        }`}>
                           Q{idx + 1 < 10 ? `0${idx + 1}` : idx + 1}
                         </span>
-                        <span className="text-[11px] font-mono font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-white/5 px-2.5 py-1 rounded-lg border border-slate-200/70 dark:border-white/10">
+                        <span className={`text-[11px] font-mono px-2 py-0.5 rounded-md border ${
+                          isLight
+                            ? 'bg-white text-slate-700 border-slate-200'
+                            : 'bg-slate-800 text-slate-300 border-slate-700'
+                        }`}>
                           {q.category || 'ECE Core'}
                         </span>
                       </div>
@@ -1083,8 +1000,12 @@ export default function AdminDashboard({
                         <button
                           type="button"
                           onClick={() => handleOpenEditQuestion(q)}
-                          className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 border border-indigo-200/80 dark:border-indigo-800/60 transition-colors cursor-pointer"
-                          title="Edit Question Details"
+                          className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+                            isLight
+                              ? 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200'
+                              : 'bg-blue-500/15 hover:bg-blue-500/25 text-blue-400 border-blue-500/30'
+                          }`}
+                          title="Edit Question in Popup Modal"
                         >
                           <Edit3 size={13} />
                           <span>Edit</span>
@@ -1093,7 +1014,7 @@ export default function AdminDashboard({
                         <button
                           type="button"
                           onClick={() => handleDeleteQuestion(q.id)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors cursor-pointer"
+                          className="p-1 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer"
                           title="Delete Question"
                         >
                           <Trash2 size={14} />
@@ -1113,22 +1034,26 @@ export default function AdminDashboard({
                         return (
                           <div
                             key={oIdx}
-                            className={`px-3 py-2 rounded-xl flex items-center justify-between text-xs transition-all ${
+                            className={`px-3 py-2 rounded-lg flex items-center justify-between text-xs transition-all border ${
                               isCorrect
                                 ? isLight
-                                  ? 'bg-emerald-50/90 text-emerald-900 font-semibold border-2 border-emerald-300 shadow-xs'
-                                  : 'bg-emerald-950/40 text-emerald-300 font-semibold border-2 border-emerald-600 shadow-xs'
+                                  ? 'bg-emerald-50 text-emerald-900 font-semibold border-emerald-300 shadow-xs'
+                                  : 'bg-emerald-950/40 text-emerald-300 font-semibold border-emerald-500/50'
                                 : isLight
-                                ? 'text-slate-700 bg-slate-50/80 border border-slate-200/80'
-                                : 'text-slate-300 bg-white/5 border border-white/5'
+                                ? 'bg-white text-slate-700 border-slate-200'
+                                : 'bg-slate-950/60 text-slate-300 border-slate-800/80'
                             }`}
                           >
                             <div className="flex items-center gap-2.5 truncate mr-2">
                               <span
-                                className={`w-5 h-5 rounded-full flex items-center justify-center font-mono text-[10px] font-bold shrink-0 ${
+                                className={`w-5 h-5 rounded flex items-center justify-center font-mono text-[10px] font-bold shrink-0 ${
                                   isCorrect
-                                    ? 'bg-emerald-600 text-white'
-                                    : 'bg-slate-200 dark:bg-white/10 text-slate-600 dark:text-slate-400'
+                                    ? isLight
+                                      ? 'bg-emerald-600 text-white'
+                                      : 'bg-emerald-500 text-slate-950 font-bold'
+                                    : isLight
+                                    ? 'bg-slate-100 text-slate-600'
+                                    : 'bg-slate-800 text-slate-400'
                                 }`}
                               >
                                 {String.fromCharCode(65 + oIdx)}
@@ -1137,7 +1062,11 @@ export default function AdminDashboard({
                             </div>
 
                             {isCorrect && (
-                              <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/60 px-2 py-0.5 rounded-md shrink-0">
+                              <span className={`inline-flex items-center gap-1 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded shrink-0 ${
+                                isLight
+                                  ? 'bg-emerald-200 text-emerald-900'
+                                  : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              }`}>
                                 <Check size={11} strokeWidth={3} />
                                 Correct Answer
                               </span>
@@ -1149,9 +1078,11 @@ export default function AdminDashboard({
                   </div>
 
                   {/* Card Bottom Meta */}
-                  <div className="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-3 border-t border-slate-100 dark:border-white/10">
+                  <div className={`flex items-center justify-between text-[11px] font-mono ${textMuted} pt-3 border-t ${
+                    isLight ? 'border-slate-200' : 'border-slate-800'
+                  }`}>
                     <span>1 Point • Single Choice</span>
-                    <span className="inline-flex items-center gap-1 text-indigo-500 font-medium">
+                    <span className="inline-flex items-center gap-1 text-emerald-500 font-medium">
                       <Sparkles size={11} />
                       Cloud Synced
                     </span>
@@ -1162,6 +1093,180 @@ export default function AdminDashboard({
           </div>
         )}
       </main>
+
+      {/* ADD / EDIT QUESTION POPUP MODAL */}
+      <AnimatePresence>
+        {(isAddingQuestion || editingQuestion) && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto">
+            {/* Backdrop Blur Overlay */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => {
+                setIsAddingQuestion(false);
+                setEditingQuestion(null);
+              }}
+              className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity"
+            />
+
+            {/* Centered Modal Card */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 15 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 15 }}
+              transition={{ type: 'spring', stiffness: 350, damping: 26 }}
+              className={`relative w-full max-w-2xl rounded-2xl shadow-2xl p-5 sm:p-7 border my-auto z-10 ${
+                isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-slate-900 border-slate-800 text-white'
+              }`}
+            >
+              {/* Modal Header */}
+              <div className={`flex items-center justify-between pb-4 mb-4 border-b ${
+                isLight ? 'border-slate-200' : 'border-slate-800'
+              }`}>
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${
+                    isLight ? 'bg-blue-50 text-blue-600' : 'bg-blue-500/10 text-blue-400'
+                  }`}>
+                    <Edit3 size={18} />
+                  </div>
+                  <div>
+                    <h3 className={`text-base font-bold ${textPrimary}`}>
+                      {editingQuestion ? `Edit Question #${editingQuestion.id}` : 'Create New Technical Question'}
+                    </h3>
+                    <p className={`text-xs ${textMuted}`}>
+                      Changes will be saved and synchronized directly with cloud storage
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddingQuestion(false);
+                    setEditingQuestion(null);
+                  }}
+                  className={`p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-pointer ${
+                    isLight ? 'hover:bg-slate-100' : 'hover:bg-slate-800'
+                  }`}
+                >
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Modal Form */}
+              <form onSubmit={handleSaveQuestion} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="sm:col-span-2">
+                    <label className={`block text-xs font-medium mb-1.5 ${textSecondary}`}>
+                      Question Prompt
+                    </label>
+                    <textarea
+                      required
+                      rows={3}
+                      value={formText}
+                      onChange={(e) => setFormText(e.target.value)}
+                      placeholder="e.g. In Boolean algebra, what is the value of A + A'B?"
+                      className={`w-full rounded-xl p-3 text-xs ${inputClass}`}
+                    />
+                  </div>
+                  <div>
+                    <label className={`block text-xs font-medium mb-1.5 ${textSecondary}`}>
+                      Category / Subject
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formCategory}
+                      onChange={(e) => setFormCategory(e.target.value)}
+                      placeholder="e.g. Semiconductors"
+                      className={`w-full rounded-xl p-3 text-xs ${inputClass}`}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className={`block text-xs font-medium mb-2 ${textSecondary}`}>
+                    Answer Options (Select the radio button for the correct answer)
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {formOptions.map((opt, i) => {
+                      const isCorrect = formCorrectAnswer === i;
+                      return (
+                        <div
+                          key={i}
+                          className={`p-3 rounded-xl border transition-all ${
+                            isCorrect
+                              ? isLight
+                                ? 'bg-emerald-50/80 border-emerald-300 ring-1 ring-emerald-300'
+                                : 'bg-emerald-950/30 border-emerald-500/50 ring-1 ring-emerald-500/30'
+                              : isLight
+                              ? 'bg-slate-50 border-slate-200'
+                              : 'bg-slate-950/60 border-slate-800'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1.5">
+                            <span className="text-xs font-mono font-bold text-slate-400">
+                              Option {String.fromCharCode(65 + i)}
+                            </span>
+                            <label className={`flex items-center gap-1.5 text-xs font-medium cursor-pointer ${
+                              isCorrect ? (isLight ? 'text-emerald-700' : 'text-emerald-400') : textMuted
+                            }`}>
+                              <input
+                                type="radio"
+                                name="formCorrectRadio"
+                                checked={isCorrect}
+                                onChange={() => setFormCorrectAnswer(i)}
+                                className="accent-emerald-600 cursor-pointer"
+                              />
+                              <span>{isCorrect ? 'Correct Answer' : 'Mark Correct'}</span>
+                            </label>
+                          </div>
+                          <input
+                            type="text"
+                            required
+                            value={opt}
+                            onChange={(e) => {
+                              const updated = [...formOptions];
+                              updated[i] = e.target.value;
+                              setFormOptions(updated);
+                            }}
+                            placeholder={`Option ${String.fromCharCode(65 + i)} text...`}
+                            className={`w-full rounded-lg px-2.5 py-1.5 text-xs ${inputClass}`}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Modal Actions */}
+                <div className={`flex items-center justify-end gap-2.5 pt-3 border-t ${
+                  isLight ? 'border-slate-200' : 'border-slate-800'
+                }`}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddingQuestion(false);
+                      setEditingQuestion(null);
+                    }}
+                    className={`px-4 py-2 rounded-xl text-xs font-medium border transition-colors cursor-pointer ${buttonSecondary}`}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 rounded-xl text-xs font-medium text-white bg-blue-600 hover:bg-blue-500 shadow-sm cursor-pointer flex items-center gap-1.5 transition-all"
+                  >
+                    <Check size={14} />
+                    <span>{editingQuestion ? 'Save & Sync Changes' : 'Create & Sync Question'}</span>
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

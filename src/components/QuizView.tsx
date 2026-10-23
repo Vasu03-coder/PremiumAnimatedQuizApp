@@ -262,7 +262,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
     .toUpperCase();
 
   return (
-    <div className="w-full max-w-3xl mx-auto px-4 py-4 sm:py-6">
+    <div className="w-full max-w-3xl mx-auto px-2 sm:px-4 py-2 sm:py-6">
       {/* Quiz Paused Overlay */}
       <AnimatePresence>
         {isQuizPaused && (
@@ -270,13 +270,13 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center"
+            className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center p-4 sm:p-6 text-center"
           >
-            <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mb-4">
-              <Lock size={26} />
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mb-3 sm:mb-4">
+              <Lock size={24} />
             </div>
-            <h3 className="text-xl font-semibold text-white mb-2">Quiz Temporarily Paused</h3>
-            <p className="text-sm text-slate-400 max-w-md leading-relaxed">
+            <h3 className="text-lg sm:text-xl font-semibold text-white mb-1.5">Quiz Temporarily Paused</h3>
+            <p className="text-xs sm:text-sm text-slate-400 max-w-md leading-relaxed">
               The test session has been paused by the administrator. The timer is currently frozen and will resume shortly.
             </p>
           </motion.div>
@@ -287,14 +287,14 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
       <AnimatePresence>
         {adminBroadcastMsg && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
+            initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="mb-4 p-3.5 rounded-xl bg-blue-950/70 border border-blue-500/30 text-blue-200 text-sm flex items-center gap-3 backdrop-blur-md"
+            exit={{ opacity: 0, y: -8 }}
+            className="mb-2.5 sm:mb-4 p-2.5 sm:p-3.5 rounded-lg sm:rounded-xl bg-blue-950/70 border border-blue-500/30 text-blue-200 text-xs sm:text-sm flex items-center gap-2.5 backdrop-blur-md"
           >
-            <Bell size={18} className="text-blue-400 shrink-0" />
+            <Bell size={16} className="text-blue-400 shrink-0" />
             <div className="flex-1 text-xs sm:text-sm">
-              <span className="font-semibold text-blue-300 mr-2">Notice:</span>
+              <span className="font-semibold text-blue-300 mr-1.5">Notice:</span>
               {adminBroadcastMsg}
             </div>
           </motion.div>
@@ -305,21 +305,21 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
       <AnimatePresence>
         {activeWarning && (
           <motion.div
-            initial={{ opacity: 0, y: -10 }}
+            initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="mb-4 p-3.5 rounded-xl bg-red-950/70 border border-red-500/40 text-red-200 text-xs sm:text-sm flex items-start gap-2.5 backdrop-blur-md"
+            exit={{ opacity: 0, y: -8 }}
+            className="mb-2.5 sm:mb-4 p-2.5 sm:p-3 rounded-lg sm:rounded-xl bg-red-950/80 border border-red-500/40 text-red-200 text-xs flex items-start gap-2 backdrop-blur-md"
           >
-            <ShieldAlert size={18} className="text-red-400 shrink-0 mt-0.5" />
+            <ShieldAlert size={16} className="text-red-400 shrink-0 mt-0.5" />
             <div className="flex-1 font-medium leading-relaxed">{activeWarning}</div>
           </motion.div>
         )}
       </AnimatePresence>
 
       {/* MAIN PROFESSIONAL ASSESSMENT CARD */}
-      <div className="surface-card rounded-2xl p-6 sm:p-8 relative">
+      <div className="surface-card rounded-xl sm:rounded-2xl p-3.5 sm:p-7 relative shadow-2xl">
         {/* Subtle Top Progress Line */}
-        <div className="absolute top-0 left-0 right-0 h-1 bg-slate-800/80 rounded-t-2xl overflow-hidden">
+        <div className="absolute top-0 left-0 right-0 h-1 bg-slate-800/80 rounded-t-xl sm:rounded-t-2xl overflow-hidden">
           <div
             className="h-full bg-blue-500 transition-all duration-300 ease-out"
             style={{ width: `${progressPercent}%` }}
@@ -327,21 +327,23 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
         </div>
 
         {/* Header Bar: Candidate Info + Minimal Timer */}
-        <div className="flex items-center justify-between gap-4 pb-5 mb-6 border-b border-white/[0.08]">
+        <div className="flex items-center justify-between gap-2 pb-3 mb-3.5 sm:pb-5 sm:mb-5 border-b border-white/[0.08]">
           {/* Candidate Profile */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700/60 flex items-center justify-center font-semibold text-xs text-slate-200 tracking-wide">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl bg-slate-800 border border-slate-700/60 flex items-center justify-center font-semibold text-xs text-slate-200 tracking-wide shrink-0">
               {initials}
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-white">{student.full_name}</span>
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-medium px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs sm:text-sm font-semibold text-white truncate max-w-[130px] sm:max-w-none">
+                  {student.full_name}
+                </span>
+                <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 shrink-0">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                   Proctored
                 </span>
               </div>
-              <div className="text-xs text-slate-400 mt-0.5">
+              <div className="text-[10px] sm:text-xs text-slate-400 truncate max-w-[130px] sm:max-w-none">
                 {student.college || 'Engineering College'}
               </div>
             </div>
@@ -349,7 +351,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
 
           {/* Minimalist Professional Pill Timer */}
           <div
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl border transition-colors ${
+            className={`flex items-center gap-1.5 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-lg sm:rounded-xl border transition-colors shrink-0 ${
               isUrgent
                 ? 'bg-red-500/10 border-red-500/40 text-red-300'
                 : isMid
@@ -357,44 +359,44 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
                 : 'bg-slate-800/60 border-slate-700/60 text-slate-200'
             }`}
           >
-            <Clock size={15} className={isUrgent ? 'text-red-400' : 'text-slate-400'} />
-            <span className="font-mono text-sm font-semibold tracking-tight">
+            <Clock size={13} className={isUrgent ? 'text-red-400' : 'text-slate-400'} />
+            <span className="font-mono text-xs sm:text-sm font-semibold tracking-tight">
               {String(Math.floor(timeLeft / 60)).padStart(2, '0')}:{String(timeLeft % 60).padStart(2, '0')}
             </span>
-            <span className="text-[10px] uppercase font-medium text-slate-400 tracking-wider">
+            <span className="text-[9px] sm:text-[10px] uppercase font-medium text-slate-400 tracking-wider">
               left
             </span>
           </div>
         </div>
 
         {/* Question Metadata & Question Text */}
-        <div className="mb-6">
-          <div className="flex items-center justify-between gap-2 mb-3">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-slate-400">
+        <div className="mb-3.5 sm:mb-5">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] sm:text-xs font-medium text-slate-400">
                 Question {currentIndex + 1} of {questions.length}
               </span>
               <span className="text-slate-600">•</span>
-              <span className="text-[11px] font-medium px-2.5 py-0.5 rounded-md bg-slate-800 border border-slate-700/50 text-slate-300">
+              <span className="text-[10px] sm:text-[11px] font-medium px-2 py-0.5 rounded-md bg-slate-800 border border-slate-700/50 text-slate-300">
                 {currentQ.category || 'ECE Core'}
               </span>
             </div>
 
             {penalizedQuestions[currentIndex] && (
-              <span className="text-xs px-2 py-0.5 rounded bg-red-500/10 border border-red-500/30 text-red-400 flex items-center gap-1 font-medium">
-                <AlertTriangle size={12} />
-                Flagged: 0 marks
+              <span className="text-[10px] sm:text-xs px-1.5 py-0.5 rounded bg-red-500/10 border border-red-500/30 text-red-400 flex items-center gap-1 font-medium">
+                <AlertTriangle size={11} />
+                Flagged
               </span>
             )}
           </div>
 
-          <h2 className="text-lg sm:text-xl font-semibold text-slate-100 leading-snug tracking-tight">
+          <h2 className="text-sm sm:text-base md:text-lg font-semibold text-slate-100 leading-snug tracking-tight">
             {currentQ.question}
           </h2>
         </div>
 
         {/* Clean, Interactive Options List */}
-        <div className="space-y-2.5 mb-8">
+        <div className="space-y-2 sm:space-y-2.5 mb-4 sm:mb-6">
           {currentQ.options.map((optionText, optIndex) => {
             const isSelected = answers[currentIndex] === optIndex;
             const letterLabel = String.fromCharCode(65 + optIndex);
@@ -410,14 +412,14 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
                     handleSelectOption(optIndex);
                   }
                 }}
-                className={`w-full text-left p-3.5 sm:p-4 rounded-xl flex items-center justify-between gap-3.5 cursor-pointer outline-none ${
+                className={`w-full text-left p-2.5 sm:p-3.5 rounded-lg sm:rounded-xl flex items-center justify-between gap-2.5 sm:gap-3 cursor-pointer outline-none transition-all ${
                   isSelected ? 'option-item-selected' : 'option-item'
                 }`}
               >
-                <div className="flex items-center gap-3.5 flex-1 min-w-0">
+                <div className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0">
                   {/* Option Badge (A, B, C, D) */}
                   <div
-                    className={`w-7 h-7 rounded-lg flex items-center justify-center font-mono text-xs font-semibold shrink-0 transition-colors ${
+                    className={`w-6 h-6 sm:w-7 sm:h-7 rounded-md sm:rounded-lg flex items-center justify-center font-mono text-xs font-semibold shrink-0 transition-colors ${
                       isSelected
                         ? 'bg-blue-600 text-white'
                         : 'bg-slate-800/80 text-slate-400 border border-slate-700/60'
@@ -428,7 +430,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
 
                   {/* Option Content Text */}
                   <span
-                    className={`text-sm sm:text-base leading-relaxed transition-colors ${
+                    className={`text-xs sm:text-sm leading-snug sm:leading-relaxed transition-colors ${
                       isSelected ? 'text-white font-medium' : 'text-slate-300'
                     }`}
                   >
@@ -438,13 +440,13 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
 
                 {/* Minimal Radio Check Indicator */}
                 <div
-                  className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition-all ${
+                  className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full border flex items-center justify-center shrink-0 transition-all ${
                     isSelected
                       ? 'border-blue-500 bg-blue-600 text-white'
                       : 'border-slate-600 bg-transparent'
                   }`}
                 >
-                  {isSelected && <Check size={12} strokeWidth={3} />}
+                  {isSelected && <Check size={10} strokeWidth={3} />}
                 </div>
               </div>
             );
@@ -452,9 +454,9 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
         </div>
 
         {/* Bottom Actions Footer */}
-        <div className="pt-5 border-t border-white/[0.08] flex flex-col sm:flex-row items-center justify-between gap-3.5">
-          {/* Subtle Shortcut Hint */}
-          <div className="text-xs text-slate-400 flex items-center gap-1.5 order-2 sm:order-1">
+        <div className="pt-3 sm:pt-4 border-t border-white/[0.08] flex items-center justify-between gap-3">
+          {/* Subtle Shortcut Hint - hidden on mobile */}
+          <div className="hidden sm:flex text-xs text-slate-400 items-center gap-1.5">
             <ShieldCheck size={14} className="text-emerald-400 shrink-0" />
             <span>
               Press <kbd className="font-mono text-[11px] px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">1-4</kbd> or <kbd className="font-mono text-[11px] px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">A-D</kbd> to select
@@ -466,7 +468,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
             type="button"
             disabled={!isAnswerSelected}
             onClick={handleNextQuestion}
-            className={`w-full sm:w-auto px-6 py-2.5 rounded-xl font-medium text-sm flex items-center justify-center gap-2 cursor-pointer transition-all order-1 sm:order-2 ${
+            className={`w-full sm:w-auto px-5 py-2.5 rounded-lg sm:rounded-xl font-medium text-xs sm:text-sm flex items-center justify-center gap-2 cursor-pointer transition-all ${
               isAnswerSelected
                 ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm'
                 : 'bg-slate-800/60 text-slate-500 border border-slate-700/40 cursor-not-allowed opacity-60'
@@ -476,7 +478,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
             <span className="hidden sm:inline-flex items-center gap-0.5 text-[10px] opacity-75 font-mono px-1 py-0.5 rounded bg-black/20 border border-white/10">
               <CornerDownLeft size={10} /> Enter
             </span>
-            <ChevronRight size={16} />
+            <ChevronRight size={15} />
           </button>
         </div>
       </div>
