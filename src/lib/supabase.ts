@@ -1,5 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
-import type { Question, StudentProfile, LiveStudentStatus, ProctoringViolation, QuizSubmission } from '../types/quiz';
+import type {
+  Question,
+  StudentProfile,
+  LiveStudentStatus,
+  ProctoringViolation,
+  QuizSubmission,
+  TeamMember,
+} from '../types/quiz';
 
 export const SUPABASE_URL = 'https://ickymxuqprfbekxumpop.supabase.co';
 export const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlja3lteHVxcHJmYmVreHVtcG9wIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg0NDM0NTYsImV4cCI6MjEwNDAxOTQ1Nn0.E7_i_XCbNJGNFif-uEQnG8d5voIn2DalZUBlXXV_SMU';
@@ -22,10 +29,45 @@ export interface CandidatePasscodeMapping {
   college: string;
   department: string;
   isDemo?: boolean;
+  teamName?: string;
+  members?: TeamMember[];
 }
 
 // Built-in verified candidate passcodes connected directly to registered email addresses
 export const PREDEFINED_PASSCODES: Record<string, CandidatePasscodeMapping> = {
+  // Official Registered Symposium Team (From Supabase registrations)
+  'SPARK26002': {
+    passcode: 'SPARK26002',
+    email: 'josephsamuvel1310@gmail.com',
+    fullName: 'codehex (Joseph S & Sam)',
+    college: 'TEC',
+    department: 'ECE',
+    teamName: 'codehex',
+    isDemo: false,
+    members: [
+      {
+        id: 'ef5ee997-9550-48d1-bb86-7c8120d84cf5',
+        fullName: 'Joseph S',
+        email: 'josephsamuvel1310@gmail.com',
+        phone: '1234567890',
+        college: 'TEC',
+        department: 'ECE',
+        year: '1st Year',
+        isLeader: true,
+      },
+      {
+        id: '0bd6080d-d95e-4031-bdd0-c839a102ce9e',
+        fullName: 'Sam',
+        email: 'josephsamuvel1310l@gmail.com',
+        phone: '0987654345',
+        college: 'TEC',
+        department: 'ECE',
+        year: '4th Year',
+        isLeader: false,
+      },
+    ],
+  },
+
   // Demo / Evaluator Account (Bypasses start countdown timer completely)
   'DEMO2026': {
     passcode: 'DEMO2026',
@@ -33,7 +75,18 @@ export const PREDEFINED_PASSCODES: Record<string, CandidatePasscodeMapping> = {
     fullName: 'Demo Candidate (Tester)',
     college: 'SPARKTRON Institute of Technology',
     department: 'ECE',
+    teamName: 'Demo Team',
     isDemo: true,
+    members: [
+      {
+        id: 'demo-leader',
+        fullName: 'Demo Candidate (Tester)',
+        email: 'demo@spark2026.com',
+        college: 'SPARKTRON Institute of Technology',
+        department: 'ECE',
+        isLeader: true,
+      },
+    ],
   },
   'SPARK-DEMO': {
     passcode: 'SPARK-DEMO',
@@ -127,82 +180,327 @@ export const PREDEFINED_PASSCODES: Record<string, CandidatePasscodeMapping> = {
   },
 };
 
-/**
- * Verify candidate login using their unique PASSCODE
- * Passcode connects directly to their registered email & profile
- */
-export async function verifyStudentByPasscode(
-  passcode: string
-): Promise<{ success: boolean; student?: StudentProfile; message?: string }> {
-  try {
-    const cleanPasscode = passcode.trim().toUpperCase();
+export interface ActivePasscodeSession {
+  passcode: string;
+  sessionId: string;
+  memberName: string;
+  startedAt: string;
+  lastHeartbeat: number;
+}
 
-    if (!cleanPasscode) {
-      return { success: false, message: 'Please enter your assessment passcode.' };
+/**
+ * Check if a passcode has an active session on another device/browser
+ */
+export function isPasscodeSessionActive(
+  passcode: string,
+  mySessionId?: string
+): { active: boolean; activeMember?: string; activeSince?: string } {
+  try {
+    const clean = (passcode || '').trim().toUpperCase();
+    if (!clean) return { active: false };
+
+    const mapStr = localStorage.getItem('spark_active_passcode_sessions');
+    if (!mapStr) return { active: false };
+
+    const map: Record<string, ActivePasscodeSession> = JSON.parse(mapStr);
+    const session = map[clean];
+    if (!session) return { active: false };
+
+    // Same session / tab refresh allowed
+    if (mySessionId && session.sessionId === mySessionId) {
+      return { active: false };
     }
 
-    // 1. Check in Pre-mapped Passcodes
-    if (PREDEFINED_PASSCODES[cleanPasscode]) {
-      const match = PREDEFINED_PASSCODES[cleanPasscode];
-      return {
-        success: true,
-        student: {
-          id: `id-${cleanPasscode.toLowerCase()}`,
-          registration_id: `reg-${cleanPasscode.toLowerCase()}`,
-          registration_code: match.passcode,
-          passcode: match.passcode,
-          full_name: match.fullName,
-          email: match.email,
-          college: match.college,
-          department: match.department,
+    // Active session threshold: active if heartbeat within last 35 seconds
+    const elapsed = Date.now() - (session.lastHeartbeat || 0);
+    if (elapsed < 35000) {
+      return { active: true, activeMember: session.memberName, activeSince: session.startedAt };
+    }
+  } catch (e) {}
+  return { active: false };
+}
+
+export function claimPasscodeSession(passcode: string, sessionId: string, memberName: string) {
+  try {
+    const clean = (passcode || '').trim().toUpperCase();
+    if (!clean || !sessionId) return;
+
+    const mapStr = localStorage.getItem('spark_active_passcode_sessions');
+    const map: Record<string, ActivePasscodeSession> = mapStr ? JSON.parse(mapStr) : {};
+    map[clean] = {
+      passcode: clean,
+      sessionId,
+      memberName,
+      startedAt: new Date().toISOString(),
+      lastHeartbeat: Date.now(),
+    };
+    localStorage.setItem('spark_active_passcode_sessions', JSON.stringify(map));
+
+    if (syncBroadcastChannel) {
+      try {
+        syncBroadcastChannel.postMessage({
+          type: 'passcode_session_claimed',
+          payload: { passcode: clean, sessionId, memberName },
+        });
+      } catch (e) {}
+    }
+  } catch (e) {}
+}
+
+export function heartbeatPasscodeSession(passcode: string, sessionId: string) {
+  try {
+    const clean = (passcode || '').trim().toUpperCase();
+    if (!clean || !sessionId) return;
+
+    const mapStr = localStorage.getItem('spark_active_passcode_sessions');
+    if (!mapStr) return;
+
+    const map: Record<string, ActivePasscodeSession> = JSON.parse(mapStr);
+    if (map[clean] && map[clean].sessionId === sessionId) {
+      map[clean].lastHeartbeat = Date.now();
+      localStorage.setItem('spark_active_passcode_sessions', JSON.stringify(map));
+    }
+  } catch (e) {}
+}
+
+export function releasePasscodeSession(passcode: string, sessionId?: string) {
+  try {
+    const clean = (passcode || '').trim().toUpperCase();
+    if (!clean) return;
+
+    const mapStr = localStorage.getItem('spark_active_passcode_sessions');
+    if (!mapStr) return;
+
+    const map: Record<string, ActivePasscodeSession> = JSON.parse(mapStr);
+    if (map[clean]) {
+      if (!sessionId || map[clean].sessionId === sessionId) {
+        delete map[clean];
+        localStorage.setItem('spark_active_passcode_sessions', JSON.stringify(map));
+      }
+    }
+
+    if (syncBroadcastChannel) {
+      try {
+        syncBroadcastChannel.postMessage({
+          type: 'passcode_session_released',
+          payload: { passcode: clean },
+        });
+      } catch (e) {}
+    }
+  } catch (e) {}
+}
+
+/**
+ * Verify candidate login using their unique PASSCODE or REGISTERED EMAIL
+ * Connects directly to their team registration & members
+ */
+export async function verifyStudentByPasscode(
+  input: string,
+  candidateSessionId?: string
+): Promise<{ success: boolean; student?: StudentProfile; message?: string }> {
+  try {
+    const cleanInput = (input || '').trim();
+    if (!cleanInput) {
+      return { success: false, message: 'Please enter your candidate assessment passcode or registered email.' };
+    }
+
+    const cleanUpper = cleanInput.toUpperCase();
+    const cleanLower = cleanInput.toLowerCase();
+    const isEmailInput = cleanInput.includes('@');
+
+    let resolvedProfile: StudentProfile | null = null;
+
+    // 1. Check in PREDEFINED_PASSCODES (by passcode or email)
+    if (PREDEFINED_PASSCODES[cleanUpper]) {
+      const match = PREDEFINED_PASSCODES[cleanUpper];
+      resolvedProfile = {
+        id: `id-${match.passcode.toLowerCase()}`,
+        registration_id: `reg-${match.passcode.toLowerCase()}`,
+        registration_code: match.passcode,
+        passcode: match.passcode,
+        full_name: match.fullName,
+        email: match.email,
+        college: match.college,
+        department: match.department,
+        team_name: match.teamName,
+        members: match.members,
+        is_verified: true,
+        is_demo: match.isDemo || false,
+      };
+    } else {
+      // Check if email matches predefined
+      const matchedByEmail = Object.values(PREDEFINED_PASSCODES).find(
+        (p) =>
+          p.email.toLowerCase() === cleanLower ||
+          p.members?.some((m) => m.email.toLowerCase() === cleanLower)
+      );
+      if (matchedByEmail) {
+        resolvedProfile = {
+          id: `id-${matchedByEmail.passcode.toLowerCase()}`,
+          registration_id: `reg-${matchedByEmail.passcode.toLowerCase()}`,
+          registration_code: matchedByEmail.passcode,
+          passcode: matchedByEmail.passcode,
+          full_name: matchedByEmail.fullName,
+          email: matchedByEmail.email,
+          college: matchedByEmail.college,
+          department: matchedByEmail.department,
+          team_name: matchedByEmail.teamName,
+          members: matchedByEmail.members,
           is_verified: true,
-          is_demo: match.isDemo || false,
-        },
+          is_demo: matchedByEmail.isDemo || false,
+        };
+      }
+    }
+
+    // 2. Query Supabase if not found in predefined
+    if (!resolvedProfile) {
+      if (isEmailInput) {
+        // Query by participant email
+        const { data: part, error: partErr } = await supabase
+          .from('participants')
+          .select(
+            'id, registration_id, full_name, email, phone, college, department, is_team_leader, year, registrations!inner(id, registration_code, technical_event_id, status, team_name)'
+          )
+          .ilike('email', cleanLower)
+          .maybeSingle();
+
+        if (part && !partErr) {
+          const reg = (part as any).registrations;
+          if (reg?.technical_event_id !== TECHNICAL_QUIZ_EVENT_ID) {
+            return {
+              success: false,
+              message: 'Access Denied: Your email is registered for another symposium event, not the Technical Quiz.',
+            };
+          }
+
+          // Fetch all participants for this team
+          const { data: allParts } = await supabase
+            .from('participants')
+            .select('id, full_name, email, phone, college, department, is_team_leader, year')
+            .eq('registration_id', part.registration_id);
+
+          const members: TeamMember[] = (allParts || []).map((p: any) => ({
+            id: p.id,
+            fullName: p.full_name || 'Member',
+            email: p.email,
+            phone: p.phone,
+            college: p.college,
+            department: p.department,
+            year: p.year,
+            isLeader: p.is_team_leader || false,
+          }));
+
+          const teamDisplayName = reg.team_name
+            ? `${reg.team_name} (${members.map((m) => m.fullName).join(' & ') || part.full_name})`
+            : part.full_name;
+
+          resolvedProfile = {
+            id: part.id,
+            registration_id: reg.id,
+            registration_code: reg.registration_code,
+            passcode: reg.registration_code,
+            full_name: teamDisplayName,
+            email: part.email,
+            college: part.college || 'Engineering College',
+            department: part.department || 'ECE',
+            phone: part.phone || '',
+            team_name: reg.team_name || undefined,
+            members,
+            is_verified: true,
+            is_demo: false,
+          };
+        }
+      } else {
+        // Query by registration_code (Passcode)
+        const { data: reg, error: regErr } = await supabase
+          .from('registrations')
+          .select(
+            'id, registration_code, technical_event_id, status, team_name, participants(id, registration_id, full_name, email, phone, college, department, is_team_leader, year)'
+          )
+          .ilike('registration_code', cleanUpper)
+          .maybeSingle();
+
+        if (reg && !regErr) {
+          if (reg.technical_event_id !== TECHNICAL_QUIZ_EVENT_ID) {
+            return {
+              success: false,
+              message: 'Access Denied: This passcode is registered for another symposium event, not the Technical Quiz.',
+            };
+          }
+
+          const parts = Array.isArray(reg.participants) ? reg.participants : [];
+          const leader = parts.find((p: any) => p.is_team_leader) || parts[0] || {};
+          const members: TeamMember[] = parts.map((p: any) => ({
+            id: p.id,
+            fullName: p.full_name || 'Member',
+            email: p.email,
+            phone: p.phone,
+            college: p.college,
+            department: p.department,
+            year: p.year,
+            isLeader: p.is_team_leader || false,
+          }));
+
+          const teamDisplayName = reg.team_name
+            ? `${reg.team_name} (${members.map((m) => m.fullName).join(' & ') || leader.full_name})`
+            : leader.full_name || 'Technical Quiz Team';
+
+          resolvedProfile = {
+            id: leader.id || reg.id,
+            registration_id: reg.id,
+            registration_code: reg.registration_code,
+            passcode: reg.registration_code,
+            full_name: teamDisplayName,
+            email: leader.email || `team_${reg.registration_code.toLowerCase()}@spark2026.com`,
+            college: leader.college || 'Engineering College',
+            department: leader.department || 'ECE',
+            phone: leader.phone || '',
+            team_name: reg.team_name || undefined,
+            members,
+            is_verified: true,
+            is_demo: false,
+          };
+        }
+      }
+    }
+
+    if (!resolvedProfile) {
+      return {
+        success: false,
+        message: `Invalid Passcode or Email "${input}". Access Denied: No confirmed Technical Quiz registration found.`,
       };
     }
 
-    // 2. Query Supabase registrations matching registration_code
-    const { data: registration, error: regError } = await supabase
-      .from('registrations')
-      .select('id, registration_code, technical_event_id, status, participants(id, registration_id, full_name, email, phone, college, department)')
-      .ilike('registration_code', cleanPasscode)
-      .maybeSingle();
+    // 3. Single-Attempt Check: Check if candidate or passcode has completed
+    const completionCheck = isStudentCompleted(resolvedProfile.email, resolvedProfile.passcode);
+    if (completionCheck.completed) {
+      return {
+        success: false,
+        message: `Assessment Completed: Candidate team has already submitted this examination (Score: ${
+          completionCheck.score ?? 0
+        } pts). Multiple attempts are locked. If you encountered an issue, please ask the administrator to grant a re-attempt.`,
+      };
+    }
 
-    if (!regError && registration) {
-      if (registration.technical_event_id !== TECHNICAL_QUIZ_EVENT_ID) {
-        return {
-          success: false,
-          message: 'Access Denied: This passcode is registered for another symposium event, not the Technical Quiz.',
-        };
-      }
+    // 4. Duplicate Concurrent Login Check: Only ONE active session allowed per passcode
+    const effectivePasscode = resolvedProfile.passcode || resolvedProfile.registration_code || '';
+    const activeCheck = isPasscodeSessionActive(effectivePasscode, candidateSessionId);
+    if (activeCheck.active) {
+      return {
+        success: false,
+        message: `Session Already Active: Another device or team member is currently taking or waiting in this quiz session with passcode "${effectivePasscode}". Simultaneous duplicate logins with the same passcode are prohibited. Please coordinate with your team member or contact Admin.`,
+      };
+    }
 
-      const participant = Array.isArray(registration.participants)
-        ? registration.participants[0]
-        : registration.participants;
-
-      if (participant) {
-        return {
-          success: true,
-          student: {
-            id: participant.id,
-            registration_id: registration.id,
-            registration_code: registration.registration_code,
-            passcode: registration.registration_code,
-            full_name: participant.full_name || 'Candidate',
-            email: participant.email,
-            college: participant.college || 'Engineering College',
-            department: participant.department || 'ECE',
-            phone: participant.phone || '',
-            is_verified: true,
-            is_demo: false,
-          },
-        };
-      }
+    // 5. Claim session
+    if (candidateSessionId) {
+      claimPasscodeSession(effectivePasscode, candidateSessionId, resolvedProfile.full_name);
+      resolvedProfile.sessionId = candidateSessionId;
     }
 
     return {
-      success: false,
-      message: `Invalid Passcode "${passcode}". Access Denied: No confirmed Technical Quiz registration found.`,
+      success: true,
+      student: resolvedProfile,
     };
   } catch (err) {
     console.error('verifyStudentByPasscode error:', err);
@@ -327,42 +625,126 @@ export async function verifyStudentRegistration(
   }
 }
 
+export interface TechnicalQuizRegistration {
+  id: string;
+  registration_id: string;
+  registration_code: string;
+  passcode: string;
+  team_name?: string;
+  full_name: string;
+  email: string;
+  phone?: string;
+  college: string;
+  department: string;
+  created_at: string;
+  members: TeamMember[];
+  isDemo?: boolean;
+}
+
 /**
- * Fetch ONLY participants registered for the Technical Quiz event
+ * Fetch ONLY registered teams/candidates for the Technical Quiz event
+ * Groups team members into a single unified assessment registration with their real pass code
  */
-export async function getTechnicalQuizParticipants() {
+export async function getTechnicalQuizParticipants(): Promise<TechnicalQuizRegistration[]> {
   try {
-    const { data, error } = await supabase
-      .from('participants')
-      .select('id, registration_id, full_name, email, phone, college, department, created_at, registrations!inner(id, registration_code, technical_event_id, status)')
-      .eq('registrations.technical_event_id', TECHNICAL_QUIZ_EVENT_ID);
+    const { data: regs, error } = await supabase
+      .from('registrations')
+      .select(
+        'id, registration_code, technical_event_id, status, team_name, created_at, participants(id, registration_id, full_name, email, phone, college, department, is_team_leader, year)'
+      )
+      .eq('technical_event_id', TECHNICAL_QUIZ_EVENT_ID);
 
-    if (!error && data && data.length > 0) {
-      return data;
+    if (!error && regs && regs.length > 0) {
+      const dbTeams: TechnicalQuizRegistration[] = regs.map((reg) => {
+        const parts = Array.isArray(reg.participants) ? reg.participants : [];
+        const leader = parts.find((p: any) => p.is_team_leader) || parts[0] || {};
+        const teamMembers: TeamMember[] = parts.map((p: any) => ({
+          id: p.id,
+          fullName: p.full_name || 'Member',
+          email: p.email || '',
+          phone: p.phone || '',
+          college: p.college || 'Engineering College',
+          department: p.department || 'ECE',
+          year: p.year || '',
+          isLeader: p.is_team_leader || false,
+        }));
+
+        const teamDisplayName = reg.team_name
+          ? `${reg.team_name} (${teamMembers.map((m) => m.fullName).join(' & ') || leader.full_name})`
+          : leader.full_name || 'Technical Quiz Team';
+
+        return {
+          id: reg.id,
+          registration_id: reg.id,
+          registration_code: reg.registration_code,
+          passcode: reg.registration_code,
+          team_name: reg.team_name || undefined,
+          full_name: teamDisplayName,
+          email: leader.email || `team_${reg.registration_code.toLowerCase()}@spark2026.com`,
+          phone: leader.phone || '',
+          college: leader.college || 'Engineering College',
+          department: leader.department || 'ECE',
+          created_at: reg.created_at || new Date().toISOString(),
+          members: teamMembers,
+          isDemo: false,
+        };
+      });
+
+      // Always include Demo account at the top for testing
+      const demoAccount: TechnicalQuizRegistration = {
+        id: 'demo-tester-id',
+        registration_id: 'reg-demo-2026',
+        registration_code: 'DEMO2026',
+        passcode: 'DEMO2026',
+        team_name: 'Evaluator Demo',
+        full_name: 'Demo Candidate (Tester)',
+        email: 'demo@spark2026.com',
+        college: 'SPARKTRON Institute of Technology',
+        department: 'ECE',
+        created_at: new Date().toISOString(),
+        members: [
+          {
+            id: 'demo-lead',
+            fullName: 'Demo Candidate (Tester)',
+            email: 'demo@spark2026.com',
+            isLeader: true,
+            department: 'ECE',
+          },
+        ],
+        isDemo: true,
+      };
+
+      return [demoAccount, ...dbTeams];
     }
-
-    // Fallback to official pre-registered participants with their connected passcodes
-    return Object.values(PREDEFINED_PASSCODES).map((p, idx) => ({
-      id: `part-${idx + 1}`,
-      registration_id: `reg-${p.passcode}`,
-      full_name: p.fullName,
-      email: p.email,
-      phone: '9876543210',
-      college: p.college,
-      department: p.department,
-      created_at: new Date().toISOString(),
-      passcode: p.passcode,
-      registrations: {
-        id: `reg-${p.passcode}`,
-        registration_code: p.passcode,
-        technical_event_id: TECHNICAL_QUIZ_EVENT_ID,
-        status: 'confirmed',
-      },
-    }));
   } catch (err) {
     console.error('getTechnicalQuizParticipants error:', err);
-    return [];
   }
+
+  // Predefined Fallback if DB query returns 0
+  return Object.values(PREDEFINED_PASSCODES).map((p, idx) => ({
+    id: `reg-${p.passcode.toLowerCase()}`,
+    registration_id: `reg-${p.passcode.toLowerCase()}`,
+    registration_code: p.passcode,
+    passcode: p.passcode,
+    team_name: p.teamName,
+    full_name: p.fullName,
+    email: p.email,
+    phone: '9876543210',
+    college: p.college,
+    department: p.department,
+    created_at: new Date().toISOString(),
+    members: p.members || [
+      {
+        id: `part-${idx + 1}`,
+        fullName: p.fullName,
+        email: p.email,
+        college: p.college,
+        department: p.department,
+        isLeader: true,
+      },
+    ],
+    isDemo: p.isDemo || false,
+  }));
 }
 
 /**
@@ -496,9 +878,15 @@ export function broadcastAdminAnnouncement(message: string) {
   });
 }
 
-export function broadcastResetStudent(studentEmail: string) {
-  clearStudentCompleted(studentEmail);
-  const payload = { studentEmail: studentEmail.toLowerCase() };
+export function broadcastResetStudent(studentEmail: string, passcode?: string) {
+  clearStudentCompleted(studentEmail, passcode);
+  if (passcode) {
+    releasePasscodeSession(passcode);
+  }
+  const payload = {
+    studentEmail: (studentEmail || '').toLowerCase(),
+    passcode: (passcode || '').toUpperCase(),
+  };
   if (syncBroadcastChannel) {
     try {
       syncBroadcastChannel.postMessage({ type: 'reset_student_session', payload });

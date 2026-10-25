@@ -19,6 +19,7 @@ import {
   getOrCreateArenaChannel,
   getQuizSchedule,
   syncBroadcastChannel,
+  heartbeatPasscodeSession,
   type QuizSchedulePayload,
 } from '../lib/supabase';
 
@@ -127,6 +128,22 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
       window.removeEventListener('spark_quiz_schedule_change', handleCustomEvent);
     };
   }, []);
+
+  // Heartbeat to prevent duplicate logins on other devices
+  useEffect(() => {
+    const passcode = (student.passcode || student.registration_code || '').toUpperCase();
+    const sessionId =
+      student.sessionId ||
+      (typeof window !== 'undefined' ? sessionStorage.getItem('spark_session_token') || '' : '');
+    if (!passcode || !sessionId) return;
+
+    heartbeatPasscodeSession(passcode, sessionId);
+    const interval = setInterval(() => {
+      heartbeatPasscodeSession(passcode, sessionId);
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [student.passcode, student.registration_code, student.sessionId]);
 
   // Synchronized 10-Second Countdown timer
   useEffect(() => {
@@ -494,10 +511,10 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
             </div>
           </div>
 
-          {/* Candidate Card */}
+          {/* Candidate / Team Card */}
           <div className="text-left p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 mb-5">
             <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-2">
-              Verified Candidate Credentials
+              Verified Team Credentials
             </div>
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
@@ -518,6 +535,21 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
                 <div className="text-[11px] text-slate-400">{student.department || 'ECE Department'}</div>
               </div>
             </div>
+
+            {student.members && student.members.length > 0 && (
+              <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-[11px] text-slate-400 font-mono">Team Roster:</span>
+                {student.members.map((m) => (
+                  <span
+                    key={m.id || m.email}
+                    className="px-2 py-0.5 rounded bg-blue-950/60 text-blue-300 border border-blue-500/30 text-[11px] font-mono flex items-center gap-1"
+                  >
+                    <span>{m.isLeader ? `👑 ${m.fullName}` : `👤 ${m.fullName}`}</span>
+                    {m.year && <span className="text-slate-400 text-[10px]">({m.year})</span>}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Rules and Protocol notice */}

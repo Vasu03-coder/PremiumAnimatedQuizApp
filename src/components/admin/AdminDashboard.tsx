@@ -294,7 +294,57 @@ export default function AdminDashboard({
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // Load ONLY Technical Quiz registered participants on mount
+  // Helper to find a candidate/team entry in students map by passcode or email
+  const findCandidateKey = (
+    map: Record<string, LiveStudentStatus>,
+    email?: string,
+    passcode?: string
+  ): string | null => {
+    const cleanPass = (passcode || '').trim().toUpperCase();
+    const cleanEmail = (email || '').trim().toLowerCase();
+
+    if (cleanPass && map[cleanPass]) return cleanPass;
+    if (cleanEmail && map[cleanEmail]) return cleanEmail;
+
+    for (const [k, s] of Object.entries(map)) {
+      if (cleanPass && s.passcode && s.passcode.toUpperCase() === cleanPass) return k;
+      if (cleanEmail && s.email && s.email.toLowerCase() === cleanEmail) return k;
+      if (cleanEmail && s.members?.some((m) => m.email.toLowerCase() === cleanEmail)) return k;
+    }
+    return cleanPass || cleanEmail || null;
+  };
+
+  // Admin Reset / Re-round for candidate or entire team
+  const handleResetStudent = (email: string, passcode?: string) => {
+    const studentPasscode = (passcode || '').toUpperCase();
+    const studentEmail = (email || '').toLowerCase();
+
+    // Broadcast reset event across Supabase Realtime & BroadcastChannel
+    broadcastResetStudent(studentEmail, studentPasscode);
+
+    // Update local state in Admin Dashboard
+    setStudents((prev) => {
+      const targetKey = findCandidateKey(prev, studentEmail, studentPasscode);
+      if (!targetKey || !prev[targetKey]) return prev;
+
+      return {
+        ...prev,
+        [targetKey]: {
+          ...prev[targetKey],
+          score: 0,
+          currentQuestion: 0,
+          violationsCount: 0,
+          status: 'offline',
+          completedAt: undefined,
+          lastSeen: new Date().toISOString(),
+        },
+      };
+    });
+
+    showToast(`🔄 Re-round granted for ${studentPasscode || studentEmail}! Candidate can re-attempt with shuffled questions.`);
+  };
+
+  // Load ONLY Technical Quiz registered participants / teams on mount
   useEffect(() => {
     async function loadQuizParticipants() {
       try {
@@ -302,13 +352,19 @@ export default function AdminDashboard({
 
         const initialMap: Record<string, LiveStudentStatus> = {};
         quizParticipants.forEach((p, idx) => {
+          const pass = (p.passcode || p.registration_code || '').toUpperCase();
           const rawEmail = p.email || `participant_${p.id || idx}@symposium.local`;
-          const key = rawEmail.toLowerCase();
+          // Use Passcode as primary key so all team members map to the same card
+          const key = pass || rawEmail.toLowerCase();
           initialMap[key] = {
             studentId: p.id || String(idx),
             name: p.full_name || 'Participant',
             email: rawEmail,
             college: p.college || 'Engineering College',
+            department: p.department || 'ECE',
+            passcode: pass,
+            teamName: p.team_name,
+            members: p.members,
             currentQuestion: 0,
             totalQuestions: questions.length,
             score: 0,
@@ -325,11 +381,11 @@ export default function AdminDashboard({
           );
           if (Array.isArray(savedSubmissions)) {
             savedSubmissions.forEach((sub) => {
-              if (!sub || !sub.participant_email) return;
-              const key = sub.participant_email.toLowerCase();
-              if (initialMap[key]) {
-                initialMap[key] = {
-                  ...initialMap[key],
+              if (!sub) return;
+              const subKey = findCandidateKey(initialMap, sub.participant_email, sub.registration_id);
+              if (subKey && initialMap[subKey]) {
+                initialMap[subKey] = {
+                  ...initialMap[subKey],
                   score: sub.score || 0,
                   currentQuestion: sub.total_questions || questions.length,
                   violationsCount: sub.violations_count || 0,
@@ -363,22 +419,28 @@ export default function AdminDashboard({
         const data = e.data;
         if (!data) return;
 
-        if (data.type === 'student_joined' && data.payload?.email) {
+        if (data.type === 'student_joined' && (data.payload?.email || data.payload?.passcode)) {
           const payload = data.payload;
-          const key = payload.email.toLowerCase();
           setStudents((prev) => {
-            const existing = prev[key] || {
-              studentId: payload.studentId || key,
+            const targetKey =
+              findCandidateKey(prev, payload.email, payload.passcode) ||
+              (payload.passcode || payload.email).toUpperCase();
+            const existing = prev[targetKey] || {
+              studentId: payload.studentId || targetKey,
               name: payload.name || 'Candidate',
               email: payload.email,
               college: payload.college || 'Engineering College',
+              department: payload.department || 'ECE',
+              passcode: payload.passcode,
+              teamName: payload.teamName,
+              members: payload.members,
               totalQuestions: payload.totalQuestions || questions.length,
               score: 0,
               violationsCount: 0,
             };
             return {
               ...prev,
-              [key]: {
+              [targetKey]: {
                 ...existing,
                 ...payload,
                 status: payload.status || 'lobby',
@@ -386,18 +448,18 @@ export default function AdminDashboard({
               },
             };
           });
-        } else if (data.type === 'score_update' && data.payload?.email) {
+        } else if (data.type === 'score_update') {
           const payload = data.payload;
-          const key = payload.email.toLowerCase();
           setStudents((prev) => {
-            if (!prev[key]) return prev;
+            const targetKey = findCandidateKey(prev, payload.email, (payload as any).passcode);
+            if (!targetKey || !prev[targetKey]) return prev;
             return {
               ...prev,
-              [key]: {
-                ...prev[key],
-                score: payload.score ?? prev[key].score,
-                currentQuestion: payload.currentQuestion ?? prev[key].currentQuestion,
-                violationsCount: payload.violationsCount ?? prev[key].violationsCount,
+              [targetKey]: {
+                ...prev[targetKey],
+                score: payload.score ?? prev[targetKey].score,
+                currentQuestion: payload.currentQuestion ?? prev[targetKey].currentQuestion,
+                violationsCount: payload.violationsCount ?? prev[targetKey].violationsCount,
                 status: 'active',
                 lastSeen: new Date().toISOString(),
               },
@@ -405,18 +467,18 @@ export default function AdminDashboard({
           });
         } else if (data.type === 'proctoring_alert' && data.payload) {
           setViolations((prev) => [data.payload, ...prev]);
-        } else if (data.type === 'quiz_completed' && data.payload?.participant_email) {
+        } else if (data.type === 'quiz_completed' && (data.payload?.participant_email || data.payload?.registration_id)) {
           const payload = data.payload;
-          const key = payload.participant_email.toLowerCase();
           setStudents((prev) => {
-            if (!prev[key]) return prev;
+            const targetKey = findCandidateKey(prev, payload.participant_email, payload.registration_id);
+            if (!targetKey || !prev[targetKey]) return prev;
             return {
               ...prev,
-              [key]: {
-                ...prev[key],
-                score: payload.score ?? prev[key].score,
+              [targetKey]: {
+                ...prev[targetKey],
+                score: payload.score ?? prev[targetKey].score,
                 currentQuestion: payload.total_questions || questions.length,
-                violationsCount: payload.violations_count ?? prev[key].violationsCount,
+                violationsCount: payload.violations_count ?? prev[targetKey].violationsCount,
                 status: 'completed',
                 completedAt: payload.completed_at || new Date().toISOString(),
               },
@@ -432,21 +494,27 @@ export default function AdminDashboard({
     // 2. Supabase Realtime channel
     const unsubscribe = subscribeToQuizArena({
       onStudentJoined: (payload) => {
-        if (!payload || !payload.email) return;
-        const key = payload.email.toLowerCase();
+        if (!payload || (!payload.email && !payload.passcode)) return;
         setStudents((prev) => {
-          const existing = prev[key] || {
-            studentId: payload.studentId || key,
+          const targetKey =
+            findCandidateKey(prev, payload.email, payload.passcode) ||
+            (payload.passcode || payload.email).toUpperCase();
+          const existing = prev[targetKey] || {
+            studentId: payload.studentId || targetKey,
             name: payload.name || 'Candidate',
             email: payload.email,
             college: payload.college || 'Engineering College',
+            department: payload.department || 'ECE',
+            passcode: payload.passcode,
+            teamName: payload.teamName,
+            members: payload.members,
             totalQuestions: payload.totalQuestions || questions.length,
             score: 0,
             violationsCount: 0,
           };
           return {
             ...prev,
-            [key]: {
+            [targetKey]: {
               ...existing,
               ...payload,
               status: payload.status || 'lobby',
@@ -456,17 +524,17 @@ export default function AdminDashboard({
         });
       },
       onScoreUpdate: (payload) => {
-        if (!payload || !payload.email) return;
-        const key = payload.email.toLowerCase();
+        if (!payload || (!payload.email && !(payload as any).passcode)) return;
         setStudents((prev) => {
-          if (!prev[key]) return prev;
+          const targetKey = findCandidateKey(prev, payload.email, (payload as any).passcode);
+          if (!targetKey || !prev[targetKey]) return prev;
           return {
             ...prev,
-            [key]: {
-              ...prev[key],
-              score: payload.score ?? prev[key].score,
-              currentQuestion: payload.currentQuestion ?? prev[key].currentQuestion,
-              violationsCount: payload.violationsCount ?? prev[key].violationsCount,
+            [targetKey]: {
+              ...prev[targetKey],
+              score: payload.score ?? prev[targetKey].score,
+              currentQuestion: payload.currentQuestion ?? prev[targetKey].currentQuestion,
+              violationsCount: payload.violationsCount ?? prev[targetKey].violationsCount,
               status: 'active',
               lastSeen: new Date().toISOString(),
             },
@@ -477,14 +545,14 @@ export default function AdminDashboard({
         if (!payload) return;
         setViolations((prev) => [payload as ProctoringViolation, ...prev]);
         if (payload.studentEmail) {
-          const key = payload.studentEmail.toLowerCase();
           setStudents((prev) => {
-            if (!prev[key]) return prev;
+            const targetKey = findCandidateKey(prev, payload.studentEmail);
+            if (!targetKey || !prev[targetKey]) return prev;
             return {
               ...prev,
-              [key]: {
-                ...prev[key],
-                violationsCount: (prev[key].violationsCount || 0) + 1,
+              [targetKey]: {
+                ...prev[targetKey],
+                violationsCount: (prev[targetKey].violationsCount || 0) + 1,
                 status: 'flagged',
               },
             };
@@ -492,17 +560,17 @@ export default function AdminDashboard({
         }
       },
       onQuizCompleted: (payload) => {
-        if (!payload || !payload.participant_email) return;
-        const key = payload.participant_email.toLowerCase();
+        if (!payload || (!payload.participant_email && !payload.registration_id)) return;
         setStudents((prev) => {
-          if (!prev[key]) return prev;
+          const targetKey = findCandidateKey(prev, payload.participant_email, payload.registration_id);
+          if (!targetKey || !prev[targetKey]) return prev;
           return {
             ...prev,
-            [key]: {
-              ...prev[key],
-              score: payload.score ?? prev[key].score,
+            [targetKey]: {
+              ...prev[targetKey],
+              score: payload.score ?? prev[targetKey].score,
               currentQuestion: payload.total_questions || questions.length,
-              violationsCount: payload.violations_count ?? prev[key].violationsCount,
+              violationsCount: payload.violations_count ?? prev[targetKey].violationsCount,
               status: 'completed',
               completedAt: payload.completed_at || new Date().toISOString(),
             },
@@ -575,43 +643,6 @@ export default function AdminDashboard({
     document.body.removeChild(link);
   };
 
-  // Reset Student Attempt (Admin Control for Re-attempt / Re-round)
-  const handleResetStudent = (studentEmail: string) => {
-    const key = studentEmail.toLowerCase();
-    const candidate = students[key];
-    const candidateName = candidate?.name || studentEmail;
-
-    if (
-      !window.confirm(
-        `Grant Re-attempt for ${candidateName} (${studentEmail})?\n\nTheir previous attempt lock will be cleared, previous score reset, and they will be allowed to log in fresh with newly shuffled questions.`
-      )
-    ) {
-      return;
-    }
-
-    // 1. Remove from completed map and saved submissions
-    clearStudentCompleted(studentEmail);
-
-    // 2. Reset in live memory
-    setStudents((prev) => {
-      if (!prev[key]) return prev;
-      return {
-        ...prev,
-        [key]: {
-          ...prev[key],
-          score: 0,
-          currentQuestion: 0,
-          violationsCount: 0,
-          status: 'offline',
-          completedAt: undefined,
-        },
-      };
-    });
-
-    // 3. Broadcast reset event across network and cross-tab sync channel
-    broadcastResetStudent(studentEmail);
-    showToast(`🔄 Re-attempt unlocked for ${candidateName}! Candidate can now log in fresh.`);
-  };
 
   // Toggle Quiz Lock (Admin Control)
   const handleToggleQuizLock = () => {
@@ -1407,11 +1438,16 @@ export default function AdminDashboard({
                           </div>
 
                           <div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <span className={`font-semibold text-sm ${textPrimary}`}>
                                 {student.name}
                               </span>
                               {statusBadge}
+                              {student.teamName && (
+                                <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                                  <Users size={10} /> Team ({student.members?.length || 2} Members)
+                                </span>
+                              )}
                               {student.violationsCount > 0 && (
                                 <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-400 border border-rose-200 dark:border-rose-800/60 flex items-center gap-1">
                                   <AlertTriangle size={10} />
@@ -1425,14 +1461,35 @@ export default function AdminDashboard({
                               <span className="font-mono">{student.email}</span>
                             </div>
 
+                            {/* Team Roster details if team */}
+                            {student.members && student.members.length > 0 && (
+                              <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                <span className="text-[10px] font-mono text-slate-400">Roster:</span>
+                                {student.members.map((m) => (
+                                  <span
+                                    key={m.id || m.email}
+                                    className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800/90 border border-slate-700/60 text-slate-300 flex items-center gap-1"
+                                  >
+                                    <span>{m.isLeader ? `👑 ${m.fullName}` : `👤 ${m.fullName}`}</span>
+                                    {m.year && <span className="text-slate-400">({m.year})</span>}
+                                    <span className="text-slate-400">• {m.email}</span>
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+
                             {/* Candidate Passcode Badge with 1-click Copy */}
                             {(() => {
                               const matchedPasscodeEntry = Object.values(PREDEFINED_PASSCODES).find(
                                 (p) => p.email.toLowerCase() === student.email.toLowerCase()
                               );
                               const candidatePasscode =
-                                matchedPasscodeEntry?.passcode || (student as any).passcode || 'SPARK-ECE-101';
-                              const isDemoCandidate = matchedPasscodeEntry?.isDemo || false;
+                                student.passcode ||
+                                (student as any).registration_code ||
+                                matchedPasscodeEntry?.passcode ||
+                                'SPARK26002';
+                              const isDemoCandidate =
+                                matchedPasscodeEntry?.isDemo || (student as any).is_demo || false;
 
                               return (
                                 <div className="flex flex-wrap items-center gap-2 mt-2">
@@ -1503,19 +1560,32 @@ export default function AdminDashboard({
                           </div>
 
                           {/* Admin Re-round / Reset Button */}
-                          <button
-                            type="button"
-                            onClick={() => handleResetStudent(student.email)}
-                            className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
-                              isLight
-                                ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
-                                : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border-rose-500/30'
-                            }`}
-                            title="Reset candidate session: unlocks passcode & allows re-attempt with shuffled questions"
-                          >
-                            <RotateCcw size={12} />
-                            <span className="hidden sm:inline">Re-round</span>
-                          </button>
+                          {(() => {
+                            const matchedPasscodeEntry = Object.values(PREDEFINED_PASSCODES).find(
+                              (p) => p.email.toLowerCase() === student.email.toLowerCase()
+                            );
+                            const candidatePasscode =
+                              student.passcode ||
+                              (student as any).registration_code ||
+                              matchedPasscodeEntry?.passcode ||
+                              'SPARK26002';
+
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => handleResetStudent(student.email, candidatePasscode)}
+                                className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+                                  isLight
+                                    ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                                    : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border-rose-500/30'
+                                }`}
+                                title="Reset candidate session: unlocks passcode & allows re-attempt with shuffled questions"
+                              >
+                                <RotateCcw size={12} />
+                                <span className="hidden sm:inline">Re-round</span>
+                              </button>
+                            );
+                          })()}
                         </div>
                       </motion.div>
                     );

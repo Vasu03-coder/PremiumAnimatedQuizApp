@@ -7,6 +7,17 @@ export interface Question {
   points?: number;
 }
 
+export interface TeamMember {
+  id: string;
+  fullName: string;
+  email: string;
+  phone?: string;
+  college?: string;
+  department?: string;
+  year?: string;
+  isLeader?: boolean;
+}
+
 export interface StudentProfile {
   id?: string;
   registration_id?: string;
@@ -19,6 +30,9 @@ export interface StudentProfile {
   phone?: string;
   is_verified?: boolean;
   is_demo?: boolean;
+  team_name?: string;
+  members?: TeamMember[];
+  sessionId?: string;
 }
 
 export type QuizSessionState = 'lobby' | 'countdown' | 'in_progress' | 'paused';
@@ -50,6 +64,10 @@ export interface LiveStudentStatus {
   name: string;
   email: string;
   college: string;
+  department?: string;
+  passcode?: string;
+  teamName?: string;
+  members?: TeamMember[];
   currentQuestion: number;
   totalQuestions: number;
   score: number;
@@ -58,6 +76,8 @@ export interface LiveStudentStatus {
   lastSeen: string;
   completedAt?: string;
   isOnline?: boolean;
+  activeSessionId?: string;
+  activeMemberName?: string;
 }
 
 export interface QuizSubmission {

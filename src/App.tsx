@@ -18,6 +18,7 @@ import {
   getQuizSchedule,
   syncBroadcastChannel,
   getOrCreateArenaChannel,
+  releasePasscodeSession,
 } from './lib/supabase';
 
 type AppRoute = 'student_login' | 'quiz_session' | 'quiz_result' | 'admin_login' | 'admin_dashboard' | 'not_found';
@@ -181,9 +182,17 @@ export default function App() {
   useEffect(() => {
     if (!activeStudent) return;
     const currentEmail = activeStudent.email.toLowerCase();
+    const activePasscode = (activeStudent.passcode || activeStudent.registration_code || '').toUpperCase();
 
-    const doReset = (targetEmail: string) => {
-      if (targetEmail.toLowerCase() === currentEmail) {
+    const doReset = (targetEmail: string, targetPasscode?: string) => {
+      const emailMatch = targetEmail && targetEmail.toLowerCase() === currentEmail;
+      const codeMatch = targetPasscode && targetPasscode.toUpperCase() === activePasscode;
+      const memberMatch = activeStudent.members?.some(
+        (m) => m.email.toLowerCase() === (targetEmail || '').toLowerCase()
+      );
+
+      if (emailMatch || codeMatch || memberMatch) {
+        releasePasscodeSession(activePasscode);
         setActiveStudent(null);
         setQuizResult(null);
         setRoute('student_login');
@@ -193,8 +202,8 @@ export default function App() {
     if (syncBroadcastChannel) {
       const channel = syncBroadcastChannel;
       const handleBroadcast = (e: MessageEvent) => {
-        if (e.data?.type === 'reset_student_session' && e.data?.payload?.studentEmail) {
-          doReset(e.data.payload.studentEmail);
+        if (e.data?.type === 'reset_student_session') {
+          doReset(e.data.payload?.studentEmail || '', e.data.payload?.passcode);
         }
       };
       channel.addEventListener('message', handleBroadcast);
@@ -203,9 +212,7 @@ export default function App() {
 
     const ch = getOrCreateArenaChannel();
     ch.on('broadcast', { event: 'reset_student_session' }, ({ payload }) => {
-      if (payload?.studentEmail) {
-        doReset(payload.studentEmail);
-      }
+      doReset(payload?.studentEmail || '', payload?.passcode);
     });
   }, [activeStudent]);
 
@@ -218,19 +225,25 @@ export default function App() {
 
     const schedule = getQuizSchedule();
     const isAlreadyActive = schedule.state === 'in_progress' && schedule.isQuizActive;
+    const effectivePasscode = (student.passcode || student.registration_code || '').toUpperCase();
 
-    // Broadcast student entry to Admin live with accurate status
+    // Broadcast student entry to Admin live with accurate status, team info, and passcode
     broadcastStudentJoined({
       studentId: student.id || student.email,
       name: student.full_name,
       email: student.email,
       college: student.college || 'Engineering College',
+      department: student.department || 'ECE',
+      passcode: effectivePasscode,
+      teamName: student.team_name,
+      members: student.members,
       currentQuestion: isAlreadyActive ? 1 : 0,
       totalQuestions: shuffled.length,
       score: 0,
       violationsCount: 0,
       status: isAlreadyActive ? 'active' : 'lobby',
       lastSeen: new Date().toISOString(),
+      activeSessionId: student.sessionId,
     });
   };
 
@@ -244,6 +257,9 @@ export default function App() {
   }) => {
     if (!activeStudent) return;
 
+    const effectivePasscode = (activeStudent.passcode || activeStudent.registration_code || '').toUpperCase();
+    releasePasscodeSession(effectivePasscode);
+
     setQuizResult({
       score: results.score,
       totalQuestions: results.totalQuestions,
@@ -253,7 +269,7 @@ export default function App() {
 
     const submission: QuizSubmission = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-      registration_id: activeStudent.registration_id,
+      registration_id: effectivePasscode || activeStudent.registration_id,
       participant_name: activeStudent.full_name,
       participant_email: activeStudent.email,
       score: results.score,
