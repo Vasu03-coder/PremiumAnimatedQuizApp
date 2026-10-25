@@ -15,6 +15,12 @@ import {
   broadcastQuizCompleted,
   recordQuizAttempt,
   syncQuestionsWithCloud,
+  getQuizSchedule,
+  syncBroadcastChannel,
+  getOrCreateArenaChannel,
+  releasePasscodeSession,
+  getCandidateSubmission,
+  clearStudentCompleted,
 } from './lib/supabase';
 
 type AppRoute = 'student_login' | 'quiz_session' | 'quiz_result' | 'admin_login' | 'admin_dashboard' | 'not_found';
@@ -74,6 +80,12 @@ export default function App() {
     if (typeof window !== 'undefined' && (checkIsDemoUrl() || window.location.search.includes('preview=quiz'))) {
       return 'quiz_session';
     }
+    if (typeof window !== 'undefined') {
+      const savedRoute = sessionStorage.getItem('spark_current_route');
+      if (savedRoute === 'quiz_result') {
+        return 'quiz_result';
+      }
+    }
     return 'student_login';
   });
 
@@ -106,6 +118,12 @@ export default function App() {
         is_demo: false,
       };
     }
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = sessionStorage.getItem('spark_active_student');
+        if (stored) return JSON.parse(stored);
+      } catch (e) {}
+    }
     return null;
   });
   const [sessionQuestions, setSessionQuestions] = useState<Question[]>(() => {
@@ -118,7 +136,25 @@ export default function App() {
     score: number;
     totalQuestions: number;
     violationsCount: number;
-  } | null>(null);
+  } | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = sessionStorage.getItem('spark_active_student');
+        if (stored) {
+          const s = JSON.parse(stored);
+          const sub = getCandidateSubmission(s.email, s.passcode);
+          if (sub) {
+            return {
+              score: sub.score,
+              totalQuestions: sub.total_questions,
+              violationsCount: sub.violations_count,
+            };
+          }
+        }
+      } catch (e) {}
+    }
+    return null;
+  });
 
   // Sync questions from Cloud & local storage on mount
   useEffect(() => {
@@ -174,25 +210,134 @@ export default function App() {
     };
   }, []);
 
+  // Schedule re-round passcodes check on mount and on schedule update
+  useEffect(() => {
+    const handleScheduleCheck = (sched: any) => {
+      if (!sched) return;
+      const passcodes: string[] = sched.reRoundPasscodes || [];
+      const emails: string[] = sched.reRoundEmails || [];
+      passcodes.forEach((p) => clearStudentCompleted('', p));
+      emails.forEach((e) => clearStudentCompleted(e, ''));
+    };
+
+    handleScheduleCheck(getQuizSchedule());
+
+    const handleCustom = (e: any) => handleScheduleCheck(e.detail);
+    window.addEventListener('spark_quiz_schedule_change', handleCustom);
+    return () => window.removeEventListener('spark_quiz_schedule_change', handleCustom);
+  }, []);
+
+  // Listen for admin reset events across the arena (always active across tabs/devices)
+  useEffect(() => {
+    const handleResetEvent = (payload: any) => {
+      if (!payload) return;
+      const targetEmail = (payload.studentEmail || '').toLowerCase();
+      const targetPasscode = (payload.passcode || '').toUpperCase();
+      const allEmails: string[] = Array.isArray(payload.allEmails)
+        ? payload.allEmails.map((e: string) => e.toLowerCase())
+        : [targetEmail];
+
+      allEmails.forEach((em) => {
+        if (em) clearStudentCompleted(em, targetPasscode);
+      });
+      if (targetPasscode) {
+        clearStudentCompleted('', targetPasscode);
+        releasePasscodeSession(targetPasscode);
+      }
+
+      if (activeStudent) {
+        const currentEmail = activeStudent.email.toLowerCase();
+        const activePasscode = (activeStudent.passcode || activeStudent.registration_code || '').toUpperCase();
+        const emailMatch = allEmails.includes(currentEmail);
+        const codeMatch = targetPasscode && targetPasscode === activePasscode;
+        const memberMatch = activeStudent.members?.some((m) =>
+          allEmails.includes((m.email || '').toLowerCase())
+        );
+
+        if (emailMatch || codeMatch || memberMatch) {
+          releasePasscodeSession(activePasscode);
+          setActiveStudent(null);
+          setQuizResult(null);
+          try {
+            sessionStorage.removeItem('spark_active_student');
+            sessionStorage.removeItem('spark_current_route');
+          } catch (e) {}
+          setRoute('student_login');
+        }
+      }
+    };
+
+    if (syncBroadcastChannel) {
+      const channel = syncBroadcastChannel;
+      const handleBroadcast = (e: MessageEvent) => {
+        if (e.data?.type === 'reset_student_session') {
+          handleResetEvent(e.data.payload);
+        }
+      };
+      channel.addEventListener('message', handleBroadcast);
+      return () => channel.removeEventListener('message', handleBroadcast);
+    }
+
+    const ch = getOrCreateArenaChannel();
+    ch.on('broadcast', { event: 'reset_student_session' }, ({ payload }) => {
+      handleResetEvent(payload);
+    });
+  }, [activeStudent]);
+
   // Student login success handler
   const handleStudentLoginSuccess = (student: StudentProfile) => {
     setActiveStudent(student);
+    try {
+      sessionStorage.setItem('spark_active_student', JSON.stringify(student));
+    } catch (e) {}
+
+    // If candidate has already submitted this examination, route directly to result review
+    if (student.is_already_completed) {
+      const sub = getCandidateSubmission(student.email, student.passcode || student.registration_code);
+      setQuizResult({
+        score: sub?.score ?? 0,
+        totalQuestions: sub?.total_questions ?? questions.length,
+        violationsCount: sub?.violations_count ?? 0,
+      });
+      if (sub?.question_snapshot && sub.question_snapshot.length > 0) {
+        setSessionQuestions(sub.question_snapshot);
+      }
+      try {
+        sessionStorage.setItem('spark_current_route', 'quiz_result');
+      } catch (e) {}
+      setRoute('quiz_result');
+      return;
+    }
+
+    try {
+      sessionStorage.setItem('spark_current_route', 'quiz_session');
+    } catch (e) {}
+
     const shuffled = getShuffledQuestions(questions);
     setSessionQuestions(shuffled);
     setRoute('quiz_session');
 
-    // Broadcast student entry to Admin live
+    const schedule = getQuizSchedule();
+    const isAlreadyActive = schedule.state === 'in_progress' && schedule.isQuizActive;
+    const effectivePasscode = (student.passcode || student.registration_code || '').toUpperCase();
+
+    // Broadcast student entry to Admin live with accurate status, team info, and passcode
     broadcastStudentJoined({
       studentId: student.id || student.email,
       name: student.full_name,
       email: student.email,
       college: student.college || 'Engineering College',
-      currentQuestion: 1,
+      department: student.department || 'ECE',
+      passcode: effectivePasscode,
+      teamName: student.team_name,
+      members: student.members,
+      currentQuestion: isAlreadyActive ? 1 : 0,
       totalQuestions: shuffled.length,
       score: 0,
       violationsCount: 0,
-      status: 'active',
+      status: isAlreadyActive ? 'active' : 'lobby',
       lastSeen: new Date().toISOString(),
+      activeSessionId: student.sessionId,
     });
   };
 
@@ -206,16 +351,22 @@ export default function App() {
   }) => {
     if (!activeStudent) return;
 
+    const effectivePasscode = (activeStudent.passcode || activeStudent.registration_code || '').toUpperCase();
+    releasePasscodeSession(effectivePasscode);
+
     setQuizResult({
       score: results.score,
       totalQuestions: results.totalQuestions,
       violationsCount: results.violationsCount,
     });
+    try {
+      sessionStorage.setItem('spark_current_route', 'quiz_result');
+    } catch (e) {}
     setRoute('quiz_result');
 
     const submission: QuizSubmission = {
       id: `${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
-      registration_id: activeStudent.registration_id,
+      registration_id: effectivePasscode || activeStudent.registration_id,
       participant_name: activeStudent.full_name,
       participant_email: activeStudent.email,
       score: results.score,
@@ -224,6 +375,7 @@ export default function App() {
       answers: results.answers,
       penalized_questions: results.penalizedQuestions,
       completed_at: new Date().toISOString(),
+      question_snapshot: sessionQuestions.length > 0 ? sessionQuestions : questions,
     };
 
     broadcastQuizCompleted(submission);
@@ -233,6 +385,10 @@ export default function App() {
   const handleResetSession = () => {
     setActiveStudent(null);
     setQuizResult(null);
+    try {
+      sessionStorage.removeItem('spark_active_student');
+      sessionStorage.removeItem('spark_current_route');
+    } catch (e) {}
     setRoute('student_login');
     window.history.pushState({}, '', '/');
   };
@@ -264,21 +420,23 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen relative flex flex-col font-sans text-slate-100 selection:bg-blue-500/30 selection:text-blue-200 overflow-hidden">
+      <div className="min-h-screen relative flex flex-col font-sans text-slate-100 selection:bg-blue-500/30 selection:text-blue-200 overflow-x-hidden overflow-y-auto">
         {/* Floating 3D Frosted Glass Background Elements */}
         <FloatingBackground />
 
         {/* Global Minimal Navigation Header */}
         <header className="w-full border-b border-white/[0.08] bg-slate-950/70 backdrop-blur-md sticky top-0 z-50">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-blue-600/15 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold text-xs tracking-wide">
-                ST
-              </div>
+          <div className="max-w-6xl mx-auto px-3.5 sm:px-6 h-13 sm:h-14 flex items-center justify-between">
+            <div className="flex items-center gap-2.5 sm:gap-3">
+              <img
+                src="/sparktron_logo.png"
+                alt="SPARKTRON 2026 Logo"
+                className="w-8 h-8 rounded-lg object-cover shadow-md shadow-blue-500/20 border border-blue-500/30 shrink-0"
+              />
               <div>
                 <div className="text-xs sm:text-sm font-semibold tracking-tight text-white flex items-center gap-2">
                   <span>SPARKTRON 2026</span>
-                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700/60">
+                  <span className="text-[9px] sm:text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700/60">
                     Technical Quiz
                   </span>
                 </div>
@@ -292,7 +450,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={handleAdminLogout}
-                className="text-xs text-slate-400 hover:text-white px-3 py-1.5 rounded-lg border border-slate-800 hover:border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer"
+                className="text-xs text-slate-400 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-800 hover:border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer"
               >
                 <span>Return to Student Portal</span>
               </button>
@@ -300,8 +458,8 @@ export default function App() {
           </div>
         </header>
 
-        {/* Main Content Area */}
-        <main className="flex-1 flex items-center justify-center py-2 sm:py-8 px-1 sm:px-0 relative z-10">
+        {/* Main Content Area - Vertically & Horizontally Centered on Mobile */}
+        <main className="flex-1 flex items-center justify-center py-2 sm:py-4 px-1 sm:px-4 relative z-10 w-full min-h-[calc(100vh-3.5rem)]">
           <AnimatePresence mode="wait">
             {route === 'student_login' && (
               <motion.div
@@ -310,7 +468,7 @@ export default function App() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
-                className="w-full"
+                className="w-full flex items-center justify-center my-auto"
               >
                 <StudentLogin onLoginSuccess={handleStudentLoginSuccess} />
               </motion.div>
@@ -333,7 +491,7 @@ export default function App() {
               </motion.div>
             )}
 
-            {route === 'quiz_result' && activeStudent && quizResult && (
+            {route === 'quiz_result' && activeStudent && (
               <motion.div
                 key="quiz_result"
                 initial={{ opacity: 0 }}
@@ -344,8 +502,10 @@ export default function App() {
               >
                 <ResultView
                   student={activeStudent}
-                  totalQuestions={quizResult.totalQuestions}
-                  violationsCount={quizResult.violationsCount}
+                  totalQuestions={quizResult?.totalQuestions || questions.length}
+                  violationsCount={quizResult?.violationsCount || 0}
+                  submission={getCandidateSubmission(activeStudent.email, activeStudent.passcode || activeStudent.registration_code)}
+                  questions={sessionQuestions.length > 0 ? sessionQuestions : questions}
                   onHome={handleResetSession}
                 />
               </motion.div>

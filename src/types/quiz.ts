@@ -7,6 +7,17 @@ export interface Question {
   points?: number;
 }
 
+export interface TeamMember {
+  id: string;
+  fullName: string;
+  email: string;
+  phone?: string;
+  college?: string;
+  department?: string;
+  year?: string;
+  isLeader?: boolean;
+}
+
 export interface StudentProfile {
   id?: string;
   registration_id?: string;
@@ -19,13 +30,26 @@ export interface StudentProfile {
   phone?: string;
   is_verified?: boolean;
   is_demo?: boolean;
+  team_name?: string;
+  members?: TeamMember[];
+  sessionId?: string;
+  is_already_completed?: boolean;
 }
 
+export type QuizSessionState = 'lobby' | 'countdown' | 'in_progress';
+
 export interface QuizScheduleConfig {
-  scheduledStartTime: string | null; // ISO timestamp or null if started
+  state: QuizSessionState;
   isQuizActive: boolean;
+  countdownSeconds?: number;
+  countdownEndTime?: string | null;
+  scheduledStartTime?: string | null;
+  targetClockTime?: string;
   durationMinutes?: number;
   message?: string;
+  startedAt?: string | null;
+  reRoundPasscodes?: string[];
+  reRoundEmails?: string[];
 }
 
 export interface ProctoringViolation {
@@ -43,14 +67,20 @@ export interface LiveStudentStatus {
   name: string;
   email: string;
   college: string;
+  department?: string;
+  passcode?: string;
+  teamName?: string;
+  members?: TeamMember[];
   currentQuestion: number;
   totalQuestions: number;
   score: number;
   violationsCount: number;
-  status: 'active' | 'completed' | 'flagged' | 'offline';
+  status: 'lobby' | 'active' | 'completed' | 'flagged' | 'offline';
   lastSeen: string;
   completedAt?: string;
   isOnline?: boolean;
+  activeSessionId?: string;
+  activeMemberName?: string;
 }
 
 export interface QuizSubmission {
@@ -64,4 +94,5 @@ export interface QuizSubmission {
   answers: Record<number, number>;
   penalized_questions: Record<number, boolean>;
   completed_at: string;
+  question_snapshot?: Question[];
 }

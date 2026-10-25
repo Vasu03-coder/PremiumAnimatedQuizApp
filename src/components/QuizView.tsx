@@ -11,6 +11,7 @@ import {
   Bell,
   CornerDownLeft,
   Zap,
+  Users,
 } from 'lucide-react';
 import type { Question, StudentProfile, ProctoringViolation } from '../types/quiz';
 import {
@@ -18,6 +19,8 @@ import {
   broadcastProctoringAlert,
   getOrCreateArenaChannel,
   getQuizSchedule,
+  syncBroadcastChannel,
+  heartbeatPasscodeSession,
   type QuizSchedulePayload,
 } from '../lib/supabase';
 
@@ -49,14 +52,14 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
   const [hasTesterBypassed, setHasTesterBypassed] = useState(false);
   const isBypassed = isDemoUser || hasTesterBypassed;
 
-  // Synchronized Quiz Start Schedule State
+  // Synchronized Quiz Session Schedule & State
   const [schedule, setSchedule] = useState<QuizSchedulePayload>(() => getQuizSchedule());
-  const [secondsUntilStart, setSecondsUntilStart] = useState<number>(() => {
-    if (isDemoUser) return 0;
-    const current = getQuizSchedule();
-    if (!current.scheduledStartTime) return 0;
-    const diff = Math.floor((new Date(current.scheduledStartTime).getTime() - Date.now()) / 1000);
-    return Math.max(0, diff);
+  const [countdownRemaining, setCountdownRemaining] = useState<number>(() => {
+    const s = getQuizSchedule();
+    if (s.state === 'countdown' && s.countdownEndTime) {
+      return Math.max(0, Math.ceil((new Date(s.countdownEndTime).getTime() - Date.now()) / 1000));
+    }
+    return 10;
   });
 
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -72,84 +75,51 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
   const [violationsCount, setViolationsCount] = useState(0);
   const [activeWarning, setActiveWarning] = useState<string | null>(null);
   const [adminBroadcastMsg, setAdminBroadcastMsg] = useState<string | null>(null);
-  const [isQuizPaused, setIsQuizPaused] = useState<boolean>(() => !getQuizSchedule().isQuizActive);
 
-  // Periodically compute seconds remaining until scheduled start
+  const questionStartRef = React.useRef<number>(Date.now());
+  const lastViolationTimeRef = React.useRef<number>(0);
+  const isLobby = schedule.state === 'lobby' && !isBypassed;
+  const isCountdown = schedule.state === 'countdown' && !isBypassed;
+  const isQuizActive = schedule.state === 'in_progress' || isBypassed;
+
+  // Synchronized schedule listener across BroadcastChannel, CustomEvent, and Supabase
   useEffect(() => {
-    if (isBypassed) {
-      setSecondsUntilStart(0);
-      return;
-    }
-
-    const checkSchedule = () => {
-      const current = getQuizSchedule();
-      if (typeof current.isQuizActive === 'boolean') {
-        setIsQuizPaused(!current.isQuizActive);
+    const handleUpdate = (updated: QuizSchedulePayload) => {
+      if (!updated) return;
+      setSchedule(updated);
+      if (updated.state === 'countdown' && updated.countdownEndTime) {
+        const diff = Math.max(0, Math.ceil((new Date(updated.countdownEndTime).getTime() - Date.now()) / 1000));
+        setCountdownRemaining(diff);
       }
-      if (!current.scheduledStartTime) {
-        setSecondsUntilStart(0);
-        return;
+      if (updated.state === 'in_progress') {
+        questionStartRef.current = Date.now();
       }
-      const diff = Math.floor((new Date(current.scheduledStartTime).getTime() - Date.now()) / 1000);
-      setSecondsUntilStart(Math.max(0, diff));
     };
 
-    checkSchedule();
-    const interval = setInterval(checkSchedule, 500);
-    return () => clearInterval(interval);
-  }, [schedule.scheduledStartTime, isBypassed]);
+    if (syncBroadcastChannel) {
+      const handleBroadcast = (e: MessageEvent) => {
+        if (e.data?.type === 'quiz_schedule_update') {
+          handleUpdate(e.data.payload);
+        }
+      };
+      syncBroadcastChannel.addEventListener('message', handleBroadcast);
+    }
 
-  // Realtime schedule update listener & cross-tab storage listener
-  useEffect(() => {
     const channel = getOrCreateArenaChannel();
-
     channel.on('broadcast', { event: 'quiz_schedule_update' }, ({ payload }) => {
-      if (payload) {
-        setSchedule(payload);
-        if (typeof payload.isQuizActive === 'boolean') {
-          setIsQuizPaused(!payload.isQuizActive);
-        }
-        if (payload.scheduledStartTime) {
-          const diff = Math.floor((new Date(payload.scheduledStartTime).getTime() - Date.now()) / 1000);
-          setSecondsUntilStart(Math.max(0, diff));
-        } else {
-          setSecondsUntilStart(0);
-        }
-      }
+      handleUpdate(payload);
     });
 
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'spark_quiz_schedule' && e.newValue) {
         try {
-          const updated = JSON.parse(e.newValue);
-          setSchedule(updated);
-          if (typeof updated.isQuizActive === 'boolean') {
-            setIsQuizPaused(!updated.isQuizActive);
-          }
-          if (updated.scheduledStartTime) {
-            const diff = Math.floor((new Date(updated.scheduledStartTime).getTime() - Date.now()) / 1000);
-            setSecondsUntilStart(Math.max(0, diff));
-          } else {
-            setSecondsUntilStart(0);
-          }
+          handleUpdate(JSON.parse(e.newValue));
         } catch (err) {}
       }
     };
 
     const handleCustomEvent = (e: any) => {
-      const payload = e.detail;
-      if (payload) {
-        setSchedule(payload);
-        if (typeof payload.isQuizActive === 'boolean') {
-          setIsQuizPaused(!payload.isQuizActive);
-        }
-        if (payload.scheduledStartTime) {
-          const diff = Math.floor((new Date(payload.scheduledStartTime).getTime() - Date.now()) / 1000);
-          setSecondsUntilStart(Math.max(0, diff));
-        } else {
-          setSecondsUntilStart(0);
-        }
-      }
+      handleUpdate(e.detail);
     };
 
     window.addEventListener('storage', handleStorageChange);
@@ -159,6 +129,57 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
       window.removeEventListener('spark_quiz_schedule_change', handleCustomEvent);
     };
   }, []);
+
+  // Heartbeat to prevent duplicate logins on other devices
+  useEffect(() => {
+    const passcode = (student.passcode || student.registration_code || '').toUpperCase();
+    const sessionId =
+      student.sessionId ||
+      (typeof window !== 'undefined' ? sessionStorage.getItem('spark_session_token') || '' : '');
+    if (!passcode || !sessionId) return;
+
+    heartbeatPasscodeSession(passcode, sessionId);
+    const interval = setInterval(() => {
+      heartbeatPasscodeSession(passcode, sessionId);
+    }, 10000);
+
+    return () => clearInterval(interval);
+  }, [student.passcode, student.registration_code, student.sessionId]);
+
+  // Synchronized 10-Second Countdown timer
+  useEffect(() => {
+    if (schedule.state !== 'countdown' || isBypassed) return;
+
+    const interval = setInterval(() => {
+      if (!schedule.countdownEndTime) {
+        setCountdownRemaining((prev) => {
+          if (prev <= 1) {
+            setSchedule((cur) => ({ ...cur, state: 'in_progress', isQuizActive: true }));
+            questionStartRef.current = Date.now();
+            return 0;
+          }
+          return prev - 1;
+        });
+      } else {
+        const diff = Math.ceil((new Date(schedule.countdownEndTime).getTime() - Date.now()) / 1000);
+        if (diff <= 0) {
+          setCountdownRemaining(0);
+          setSchedule((cur) => ({ ...cur, state: 'in_progress', isQuizActive: true }));
+          questionStartRef.current = Date.now();
+        } else {
+          setCountdownRemaining(diff);
+        }
+      }
+    }, 250);
+
+    return () => clearInterval(interval);
+  }, [schedule.state, schedule.countdownEndTime, isBypassed]);
+
+  // Reset per-question timestamp when question advances
+  useEffect(() => {
+    questionStartRef.current = Date.now();
+    setTimeLeft(SECONDS_PER_QUESTION);
+  }, [currentIndex]);
 
   const currentQ = questions[currentIndex] || questions[0];
   const progressPercent = ((currentIndex + 1) / questions.length) * 100;
@@ -199,6 +220,20 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
   // Trigger anti-cheat penalty
   const handleCheatAttempt = useCallback(
     (type: ProctoringViolation['violationType'], reason: string) => {
+      // STRICT GUARD: Anti-cheat penalties MUST ONLY trigger when the exam is actively LIVE!
+      // NEVER flag when in Waiting Lobby or in 10s Countdown!
+      if (!isQuizActive || isLobby || isCountdown) {
+        return;
+      }
+
+      // Strict 4-second cooldown to avoid duplicate/rapid flags
+      // (Ensures 1 tab switch or defocus action records exactly 1 single flag)
+      const now = Date.now();
+      if (now - lastViolationTimeRef.current < 4000) {
+        return;
+      }
+      lastViolationTimeRef.current = now;
+
       setPenalizedQuestions((prev) => ({ ...prev, [currentIndex]: true }));
       setViolationsCount((prev) => prev + 1);
       setActiveWarning(
@@ -220,7 +255,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
         setActiveWarning(null);
       }, 6000);
     },
-    [currentIndex, student]
+    [currentIndex, student, isQuizActive, isLobby, isCountdown]
   );
 
   // Listen for admin live broadcast messages and lock status
@@ -236,7 +271,11 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
 
     channel.on('broadcast', { event: 'quiz_status_change' }, ({ payload }) => {
       if (payload && typeof payload.isQuizActive === 'boolean') {
-        setIsQuizPaused(!payload.isQuizActive);
+        setSchedule((prev) => ({
+          ...prev,
+          isQuizActive: payload.isQuizActive,
+          state: payload.isQuizActive ? 'in_progress' : 'lobby',
+        }));
       }
     });
 
@@ -247,8 +286,13 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
     });
   }, [student.email]);
 
-  // Anti-Cheat Listeners
+  // Anti-Cheat Listeners (Armed ONLY when the quiz is LIVE in progress)
   useEffect(() => {
+    // If not actively taking quiz (e.g. In Lobby or In Countdown), do NOT monitor!
+    if (!isQuizActive || isLobby || isCountdown) {
+      return;
+    }
+
     const handleVisibilityChange = () => {
       if (document.hidden) {
         handleCheatAttempt('tab_switch', 'Tab switch or window defocus detected');
@@ -256,7 +300,11 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
     };
 
     const handleWindowBlur = () => {
-      handleCheatAttempt('window_blur', 'Exam window focus lost');
+      // Only trigger window blur if document is NOT hidden
+      // This prevents Chrome/Edge from firing both visibilitychange and blur on 1 tab switch!
+      if (!document.hidden) {
+        handleCheatAttempt('window_blur', 'Exam window focus lost');
+      }
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -288,7 +336,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
       window.removeEventListener('keyup', handleKeyDown);
       window.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [handleCheatAttempt]);
+  }, [isQuizActive, isLobby, isCountdown, handleCheatAttempt]);
 
   // Next Question Handler
   const handleNextQuestion = useCallback(() => {
@@ -310,22 +358,22 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
     }
   }, [calculateCurrentScore, currentIndex, notifyScoreProgress, onCompleteQuiz, questions.length, answers, penalizedQuestions, violationsCount]);
 
-  // Countdown Timer for questions
+  // Drift-free Countdown Timer for questions
   useEffect(() => {
-    if (isQuizPaused || (!isBypassed && secondsUntilStart > 0)) return;
+    if (!isQuizActive) return;
 
     const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          handleNextQuestion();
-          return SECONDS_PER_QUESTION;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+      const elapsed = Math.floor((Date.now() - questionStartRef.current) / 1000);
+      const remaining = Math.max(0, SECONDS_PER_QUESTION - elapsed);
+      setTimeLeft(remaining);
+
+      if (remaining <= 0) {
+        handleNextQuestion();
+      }
+    }, 250);
 
     return () => clearInterval(timer);
-  }, [currentIndex, handleNextQuestion, isQuizPaused, isBypassed, secondsUntilStart]);
+  }, [currentIndex, handleNextQuestion, isQuizActive]);
 
   const handleSelectOption = (optionIndex: number) => {
     setAnswers((prev) => ({
@@ -337,9 +385,8 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
   // Keyboard Navigation: keys 1-4, A-D for options, and Enter for Next Question
   useEffect(() => {
     const handleQuizKeyboard = (e: KeyboardEvent) => {
-      // Ignore if typing in an input or if quiz is paused
+      // Ignore if typing in an input
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
-      if (isQuizPaused) return;
 
       const key = e.key.toLowerCase();
       if (key === '1' || key === 'a') {
@@ -360,7 +407,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
 
     window.addEventListener('keydown', handleQuizKeyboard);
     return () => window.removeEventListener('keydown', handleQuizKeyboard);
-  }, [answers, currentIndex, currentQ.options, handleNextQuestion, isQuizPaused]);
+  }, [answers, currentIndex, currentQ.options, handleNextQuestion]);
 
   const isUrgent = timeLeft <= 15;
   const isMid = timeLeft <= 30 && timeLeft > 15;
@@ -374,24 +421,59 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
     .substring(0, 2)
     .toUpperCase();
 
-  // If the candidate is NOT bypassed and the scheduled start timer has not yet reached zero,
-  // render the synchronized Waiting Room with live countdown lock!
-  if (!isBypassed && secondsUntilStart > 0) {
-    const hours = Math.floor(secondsUntilStart / 3600);
-    const minutes = Math.floor((secondsUntilStart % 3600) / 60);
-    const seconds = secondsUntilStart % 60;
-    const formattedCountdown =
-      hours > 0
-        ? `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-        : `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-    const targetTimeFormatted =
-      schedule.targetClockTime ||
-      (schedule.scheduledStartTime
-        ? new Date(schedule.scheduledStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
-        : null);
-
+  // 1. Synchronized 10-Second Countdown Screen
+  if (isCountdown) {
     return (
-      <div className="w-full max-w-2xl mx-auto px-3 sm:px-4 py-4 sm:py-8">
+      <div className="w-full max-w-xl mx-auto px-4 py-12 text-center">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="surface-card rounded-3xl p-8 sm:p-12 relative shadow-2xl border border-blue-500/30 overflow-hidden"
+        >
+          {/* Animated background glow rings */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-64 h-64 rounded-full bg-blue-500/10 blur-3xl animate-pulse" />
+          </div>
+
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/30 text-xs font-mono font-semibold mb-6">
+            <span className="w-2 h-2 rounded-full bg-blue-400 animate-ping" />
+            <span>ASSESSMENT COMMENCING</span>
+          </div>
+
+          <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight mb-2">
+            Get Ready, {student.full_name}!
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-400 max-w-xs mx-auto mb-8">
+            The administrator has initiated the session. All questions unlock simultaneously.
+          </p>
+
+          {/* Giant Countdown Digits */}
+          <div className="relative my-4 flex items-center justify-center">
+            <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-full bg-gradient-to-b from-blue-600/20 to-slate-900 border-2 border-blue-500/40 flex items-center justify-center shadow-inner shadow-blue-500/30">
+              <motion.span
+                key={countdownRemaining}
+                initial={{ scale: 1.4, opacity: 0.6 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.3 }}
+                className="text-7xl sm:text-8xl font-mono font-black text-transparent bg-clip-text bg-gradient-to-b from-white via-blue-200 to-blue-400"
+              >
+                {countdownRemaining}
+              </motion.span>
+            </div>
+          </div>
+
+          <p className="text-xs font-mono text-blue-400 mt-6 animate-pulse">
+            Starting in {countdownRemaining} second{countdownRemaining !== 1 ? 's' : ''}...
+          </p>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // 2. Student Waiting Lobby Screen (Admin has not started quiz yet)
+  if (isLobby) {
+    return (
+      <div className="w-full max-w-xl mx-auto px-1 sm:px-4 py-2 sm:py-6">
         {/* Admin Broadcast Banner */}
         <AnimatePresence>
           {adminBroadcastMsg && (
@@ -399,7 +481,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
-              className="mb-4 p-3 rounded-xl bg-blue-950/70 border border-blue-500/30 text-blue-200 text-xs sm:text-sm flex items-center gap-2.5 backdrop-blur-md"
+              className="mb-3 p-3 rounded-xl bg-blue-950/80 border border-blue-500/40 text-blue-200 text-xs sm:text-sm flex items-center gap-2.5 backdrop-blur-md shadow-lg"
             >
               <Bell size={16} className="text-blue-400 shrink-0" />
               <div className="flex-1 text-xs sm:text-sm">
@@ -410,117 +492,118 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
           )}
         </AnimatePresence>
 
-        <div className="surface-card rounded-2xl p-5 sm:p-8 relative shadow-2xl border border-white/10 text-center">
-          {/* Paused Alert Banner in Waiting Room */}
-          {isQuizPaused && (
-            <div className="mb-4 p-3.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-200 text-xs sm:text-sm flex items-center justify-center gap-2">
-              <Lock size={16} className="text-amber-400 shrink-0" />
-              <span className="font-semibold text-amber-300">Quiz is currently PAUSED by Administrator.</span>
-              <span className="text-slate-300">The session is on hold.</span>
-            </div>
-          )}
-
+        <div className="surface-card rounded-xl sm:rounded-2xl p-3 sm:p-6 relative shadow-2xl border border-white/10 text-center">
           {/* Top pulse badge */}
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-mono font-medium mb-4">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-            <span>WAITING ROOM • SYNCHRONIZED START</span>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 text-[11px] sm:text-xs font-mono font-medium mb-2.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>CONNECTED IN LOBBY • WAITING FOR HOST</span>
           </div>
 
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-white tracking-tight mb-2">
-            SPARKTRON 2026 Assessment Arena
+          <h1 className="text-lg sm:text-2xl font-bold text-white tracking-tight">
+            SPARKTRON 2026 Arena
           </h1>
-          <p className="text-xs sm:text-sm text-slate-400 max-w-md mx-auto mb-6">
-            The examination questions will automatically unlock when the administrator start timer reaches zero.
+          <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1 mb-4 leading-relaxed">
+            Please remain on this screen. All terminals will automatically unlock together when the host starts.
           </p>
 
-          {/* Glowing Digital Countdown Clock */}
-          <div className="my-6 p-6 sm:p-8 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950 border border-blue-500/20 shadow-inner">
-            <div className="text-[11px] font-mono text-slate-400 uppercase tracking-widest mb-1">
-              Time Until Quiz Unlocks
+          {/* Animated Compact Radar Box */}
+          <div className="mb-4 p-3 rounded-xl bg-gradient-to-r from-emerald-950/30 via-slate-900/60 to-blue-950/30 border border-emerald-500/20 flex items-center gap-3 text-left">
+            <div className="relative flex items-center justify-center w-8 h-8 shrink-0">
+              <span className="absolute w-8 h-8 rounded-full bg-emerald-500/20 animate-ping" />
+              <div className="w-7 h-7 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                <ShieldCheck size={16} />
+              </div>
             </div>
-            <div className="text-5xl sm:text-6xl md:text-7xl font-mono font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-200 to-cyan-400 drop-shadow-sm">
-              {formattedCountdown}
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-semibold text-white flex items-center gap-1.5">
+                <span>Realtime Arena Connected</span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">Live</span>
+              </div>
+              <div className="text-[11px] text-slate-400 truncate">
+                Automatic synchronized unlock on start
+              </div>
             </div>
-            {targetTimeFormatted && (
-              <div className="text-xs text-slate-400 font-mono mt-2 flex items-center justify-center gap-1.5">
-                <Clock size={13} className="text-blue-400" />
-                <span>Scheduled Launch Time: <strong className="text-blue-300">{targetTimeFormatted}</strong></span>
+          </div>
+
+          {/* Verified Team Credentials Pass */}
+          <div className="text-left p-3.5 sm:p-4 rounded-xl bg-slate-900/70 border border-slate-800/80 mb-4">
+            <div className="flex items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-slate-800">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                  <Users size={14} />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Team Credentials</div>
+                  <div className="font-bold text-xs sm:text-sm text-white truncate">
+                    {student.team_name || student.full_name}
+                  </div>
+                </div>
+              </div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shrink-0">
+                ✓ Ready
+              </span>
+            </div>
+
+            {/* 2-Column Info Grid */}
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="p-2 rounded-lg bg-slate-950/60 border border-slate-800/80">
+                <div className="text-[10px] font-mono text-slate-400">Passcode</div>
+                <div className="font-mono font-bold text-blue-400 text-xs mt-0.5 tracking-wider truncate">
+                  {student.passcode || student.registration_code}
+                </div>
+              </div>
+              <div className="p-2 rounded-lg bg-slate-950/60 border border-slate-800/80">
+                <div className="text-[10px] font-mono text-slate-400">College / Dept</div>
+                <div className="font-medium text-slate-200 text-xs mt-0.5 truncate" title={`${student.college || ''} ${student.department || ''}`}>
+                  {student.college ? `${student.college} • ` : ''}{student.department || 'ECE'}
+                </div>
+              </div>
+            </div>
+
+            {/* Team Roster Chips */}
+            {student.members && student.members.length > 0 && (
+              <div className="mt-2.5 pt-2.5 border-t border-slate-800/80">
+                <div className="text-[10px] font-mono text-slate-400 mb-1.5">Registered Team Roster:</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {student.members.map((m) => (
+                    <span
+                      key={m.id || m.email}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-950/60 text-blue-200 border border-blue-500/30 text-[11px] font-mono"
+                    >
+                      <span>{m.isLeader ? `👑 ${m.fullName}` : `👤 ${m.fullName}`}</span>
+                      {m.year && <span className="text-slate-400 text-[10px]">({m.year})</span>}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
           </div>
 
-          {/* Candidate Card */}
-          <div className="text-left p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 mb-5">
-            <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-2">
-              Verified Candidate Credentials
+          {/* Rules & Protocols Micro Cards */}
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-2 text-center mb-4">
+            <div className="p-2 sm:p-2.5 rounded-lg bg-slate-900/50 border border-slate-800/80">
+              <ShieldCheck size={14} className="text-emerald-400 mx-auto mb-1" />
+              <div className="text-[11px] font-semibold text-slate-200">Anti-Cheat</div>
+              <div className="text-[9px] text-slate-400 mt-0.5">Focus Guarded</div>
             </div>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <div className="font-semibold text-sm sm:text-base text-white flex items-center gap-2">
-                  <span>{student.full_name}</span>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                    Ready
-                  </span>
-                </div>
-                <div className="text-xs text-slate-400 mt-0.5 flex flex-wrap items-center gap-2 font-mono">
-                  <span>Passcode: <strong className="text-blue-400">{student.passcode || student.registration_code}</strong></span>
-                  <span>•</span>
-                  <span>{student.email}</span>
-                </div>
-              </div>
-              <div className="text-xs text-slate-400 sm:text-right">
-                <div className="font-medium text-slate-300">{student.college || 'Engineering College'}</div>
-                <div className="text-[11px] text-slate-400">{student.department || 'ECE Department'}</div>
-              </div>
+            <div className="p-2 sm:p-2.5 rounded-lg bg-slate-900/50 border border-slate-800/80">
+              <Clock size={14} className="text-blue-400 mx-auto mb-1" />
+              <div className="text-[11px] font-semibold text-slate-200">60s Timer</div>
+              <div className="text-[9px] text-slate-400 mt-0.5">Per Question</div>
+            </div>
+            <div className="p-2 sm:p-2.5 rounded-lg bg-slate-900/50 border border-slate-800/80">
+              <Zap size={14} className="text-amber-400 mx-auto mb-1" />
+              <div className="text-[11px] font-semibold text-slate-200">Shuffled</div>
+              <div className="text-[9px] text-slate-400 mt-0.5">Unique Order</div>
             </div>
           </div>
 
-          {/* Rules and Protocol notice */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-left mb-5">
-            <div className="p-3 rounded-lg bg-slate-900/40 border border-slate-800/60">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200 mb-1">
-                <ShieldCheck size={14} className="text-emerald-400 shrink-0" />
-                <span>Proctoring Armed</span>
-              </div>
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                Tab switches, window defocus, and screenshots will be logged as violations.
-              </p>
-            </div>
-
-            <div className="p-3 rounded-lg bg-slate-900/40 border border-slate-800/60">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200 mb-1">
-                <Clock size={14} className="text-blue-400 shrink-0" />
-                <span>60s / Question</span>
-              </div>
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                Each question has a 60-second limit and auto-submits when expired.
-              </p>
-            </div>
-
-            <div className="p-3 rounded-lg bg-slate-900/40 border border-slate-800/60">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200 mb-1">
-                <Zap size={14} className="text-amber-400 shrink-0" />
-                <span>Auto Launch</span>
-              </div>
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                No need to refresh the page. The questions unlock automatically.
-              </p>
-            </div>
-          </div>
-
-          {/* Tester bypass option */}
-          <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+          {/* Bottom Connection Status */}
+          <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-center text-[11px] text-slate-400">
             <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Realtime cloud sync connected</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Realtime cloud connected</span>
             </div>
-            <button
-              type="button"
-              onClick={() => setHasTesterBypassed(true)}
-              className="text-[11px] text-blue-400 hover:text-blue-300 underline underline-offset-2 cursor-pointer transition-colors"
-            >
-              Examiner Test: Skip Waiting Room
-            </button>
           </div>
         </div>
       </div>
@@ -528,37 +611,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
   }
 
   return (
-    <div className="w-full max-w-3xl mx-auto px-2 sm:px-4 py-2 sm:py-6">
-      {/* Quiz Paused Overlay (Freezes entire test view immediately) */}
-      <AnimatePresence>
-        {isQuizPaused && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-4 sm:p-6 text-center select-none cursor-not-allowed pointer-events-auto"
-          >
-            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-400 flex items-center justify-center mb-4 shadow-xl shadow-amber-500/10">
-              <Lock size={34} className="animate-pulse" />
-            </div>
-            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono text-xs font-semibold mb-3">
-              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-              SESSION PAUSED BY ADMINISTRATOR
-            </div>
-            <h3 className="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-2 tracking-tight">
-              Assessment Temporarily Frozen
-            </h3>
-            <p className="text-xs sm:text-sm text-slate-300 max-w-md leading-relaxed mb-5">
-              The administrator has paused the quiz session. Your answers, question progress, and remaining time are securely preserved.
-            </p>
-            <div className="text-[11px] font-mono text-slate-400 px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 flex items-center gap-2">
-              <Clock size={14} className="text-amber-400 shrink-0" />
-              <span>Questions will automatically unfreeze when the administrator resumes the quiz.</span>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
+    <div className="w-full max-w-3xl mx-auto px-1 sm:px-4 py-1.5 sm:py-6">
       {/* Admin Broadcast Banner */}
       <AnimatePresence>
         {adminBroadcastMsg && (
@@ -566,7 +619,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="mb-2.5 sm:mb-4 p-2.5 sm:p-3.5 rounded-lg sm:rounded-xl bg-blue-950/70 border border-blue-500/30 text-blue-200 text-xs sm:text-sm flex items-center gap-2.5 backdrop-blur-md"
+            className="mb-2 sm:mb-4 p-2 sm:p-3.5 rounded-lg sm:rounded-xl bg-blue-950/70 border border-blue-500/30 text-blue-200 text-xs sm:text-sm flex items-center gap-2.5 backdrop-blur-md"
           >
             <Bell size={16} className="text-blue-400 shrink-0" />
             <div className="flex-1 text-xs sm:text-sm">
@@ -584,7 +637,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="mb-2.5 sm:mb-4 p-2.5 sm:p-3 rounded-lg sm:rounded-xl bg-red-950/80 border border-red-500/40 text-red-200 text-xs flex items-start gap-2 backdrop-blur-md"
+            className="mb-2 sm:mb-4 p-2 sm:p-3 rounded-lg sm:rounded-xl bg-red-950/80 border border-red-500/40 text-red-200 text-xs flex items-start gap-2 backdrop-blur-md"
           >
             <ShieldAlert size={16} className="text-red-400 shrink-0 mt-0.5" />
             <div className="flex-1 font-medium leading-relaxed">{activeWarning}</div>
@@ -593,7 +646,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
       </AnimatePresence>
 
       {/* MAIN PROFESSIONAL ASSESSMENT CARD */}
-      <div className="surface-card rounded-xl sm:rounded-2xl p-3.5 sm:p-7 relative shadow-2xl">
+      <div className="surface-card rounded-xl sm:rounded-2xl p-2.5 sm:p-7 relative shadow-2xl">
         {/* Subtle Top Progress Line */}
         <div className="absolute top-0 left-0 right-0 h-1 bg-slate-800/80 rounded-t-xl sm:rounded-t-2xl overflow-hidden">
           <div
