@@ -219,6 +219,12 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
   // Trigger anti-cheat penalty
   const handleCheatAttempt = useCallback(
     (type: ProctoringViolation['violationType'], reason: string) => {
+      // STRICT GUARD: Anti-cheat penalties MUST ONLY trigger when the exam is actively LIVE!
+      // NEVER flag when in Waiting Lobby, 10s Countdown, or when Quiz is Paused by Admin.
+      if (!isQuizActive || isLobby || isCountdown || isQuizPaused) {
+        return;
+      }
+
       setPenalizedQuestions((prev) => ({ ...prev, [currentIndex]: true }));
       setViolationsCount((prev) => prev + 1);
       setActiveWarning(
@@ -240,7 +246,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
         setActiveWarning(null);
       }, 6000);
     },
-    [currentIndex, student]
+    [currentIndex, student, isQuizActive, isLobby, isCountdown, isQuizPaused]
   );
 
   // Listen for admin live broadcast messages and lock status
@@ -271,8 +277,13 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
     });
   }, [student.email]);
 
-  // Anti-Cheat Listeners
+  // Anti-Cheat Listeners (Armed ONLY when the quiz is LIVE in progress)
   useEffect(() => {
+    // If not actively taking quiz (e.g. In Lobby, In Countdown, or Quiz Paused/Frozen), do NOT monitor!
+    if (!isQuizActive || isLobby || isCountdown || isQuizPaused) {
+      return;
+    }
+
     const handleVisibilityChange = () => {
       if (document.hidden) {
         handleCheatAttempt('tab_switch', 'Tab switch or window defocus detected');
@@ -312,7 +323,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
       window.removeEventListener('keyup', handleKeyDown);
       window.removeEventListener('contextmenu', handleContextMenu);
     };
-  }, [handleCheatAttempt]);
+  }, [isQuizActive, isLobby, isCountdown, isQuizPaused, handleCheatAttempt]);
 
   // Next Question Handler
   const handleNextQuestion = useCallback(() => {

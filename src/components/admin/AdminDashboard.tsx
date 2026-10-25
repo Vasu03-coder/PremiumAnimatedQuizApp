@@ -341,7 +341,29 @@ export default function AdminDashboard({
       };
     });
 
+    // Wipe recorded proctoring violations for this candidate/team
+    setViolations((prev) =>
+      prev.filter(
+        (v) =>
+          v.studentEmail.toLowerCase() !== studentEmail &&
+          (!studentPasscode || !v.studentName.toUpperCase().includes(studentPasscode))
+      )
+    );
+
     showToast(`🔄 Re-round granted for ${studentPasscode || studentEmail}! Candidate can re-attempt with shuffled questions.`);
+  };
+
+  // Clear all proctoring violations across all candidates
+  const handleClearAllViolations = () => {
+    setViolations([]);
+    setStudents((prev) => {
+      const updated: Record<string, LiveStudentStatus> = {};
+      Object.entries(prev).forEach(([k, s]) => {
+        updated[k] = { ...s, violationsCount: 0 };
+      });
+      return updated;
+    });
+    showToast('🧹 All proctoring alert logs and penalty flags cleared!');
   };
 
   // Load ONLY Technical Quiz registered participants / teams on mount
@@ -1599,13 +1621,29 @@ export default function AdminDashboard({
         {/* TAB 2: Proctoring Alerts */}
         {activeTab === 'proctoring' && (
           <div className={`${cardClass} rounded-xl p-6 transition-colors duration-200`}>
-            <h2 className={`text-base font-bold ${textPrimary} mb-1 flex items-center gap-2`}>
-              <ShieldAlert className="text-amber-500" size={18} />
-              Proctoring Telemetry & Anti-Cheat Feed
-            </h2>
-            <p className={`text-xs ${textMuted} mb-6`}>
-              Real-time audit log of tab switches, screen blur, and screenshot penalties
-            </p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+              <div>
+                <h2 className={`text-base font-bold ${textPrimary} mb-1 flex items-center gap-2`}>
+                  <ShieldAlert className="text-amber-500" size={18} />
+                  Proctoring Telemetry & Anti-Cheat Feed
+                </h2>
+                <p className={`text-xs ${textMuted}`}>
+                  Real-time audit log of tab switches, screen blur, and screenshot penalties
+                </p>
+              </div>
+
+              {violations.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleClearAllViolations}
+                  className="px-3 py-1.5 rounded-lg border text-xs font-medium text-rose-300 border-rose-500/30 bg-rose-500/10 hover:bg-rose-500/20 transition-colors flex items-center gap-1.5 cursor-pointer self-start sm:self-auto"
+                  title="Clear all recorded violation logs and reset flag counters on candidates"
+                >
+                  <Trash2 size={13} />
+                  <span>Clear All Logs ({violations.length})</span>
+                </button>
+              )}
+            </div>
 
             {violations.length === 0 ? (
               <div className="text-center py-16 text-slate-400">
