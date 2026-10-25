@@ -430,14 +430,18 @@ export function broadcastResetStudent(studentEmail: string) {
 
 export interface QuizSchedulePayload {
   scheduledStartTime: string | null; // ISO string when quiz starts or null for immediate
-  isQuizActive: boolean;
+  isQuizActive: boolean; // false when quiz is paused by admin
   durationMinutes?: number;
+  targetClockTime?: string; // e.g. "10:00 AM"
   message?: string;
 }
 
 export function broadcastQuizSchedule(payload: QuizSchedulePayload) {
   try {
     localStorage.setItem('spark_quiz_schedule', JSON.stringify(payload));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('spark_quiz_schedule_change', { detail: payload }));
+    }
   } catch (e) {}
 
   const ch = getOrCreateArenaChannel();
@@ -462,10 +466,12 @@ export function getQuizSchedule(): QuizSchedulePayload {
 export function broadcastQuizStatus(isQuizActive: boolean) {
   // Also update schedule status
   const current = getQuizSchedule();
-  broadcastQuizSchedule({
+  const updated: QuizSchedulePayload = {
     ...current,
     isQuizActive,
-  });
+    message: isQuizActive ? 'Quiz resumed by Administrator' : 'Quiz paused by Administrator',
+  };
+  broadcastQuizSchedule(updated);
 
   const ch = getOrCreateArenaChannel();
   return ch.send({

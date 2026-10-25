@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Cpu, ShieldCheck } from 'lucide-react';
+import { Cpu, ShieldCheck, AlertTriangle } from 'lucide-react';
 import StudentLogin from './components/StudentLogin';
 import QuizView from './components/QuizView';
 import ResultView from './components/ResultView';
@@ -17,10 +17,25 @@ import {
   syncQuestionsWithCloud,
 } from './lib/supabase';
 
-type AppRoute = 'student_login' | 'quiz_session' | 'quiz_result' | 'admin_login' | 'admin_dashboard';
+type AppRoute = 'student_login' | 'quiz_session' | 'quiz_result' | 'admin_login' | 'admin_dashboard' | 'not_found';
 
-const checkIsAdminUrl = (): boolean => {
+const checkIsAdminCtrlUrl = (): boolean => {
   if (typeof window === 'undefined') return false;
+  const p = (window.location.pathname || '').toLowerCase();
+  const s = (window.location.search || '').toLowerCase();
+  const h = (window.location.hash || '').toLowerCase();
+  return (
+    p === '/adminctrl' ||
+    p.startsWith('/adminctrl/') ||
+    p.endsWith('/adminctrl') ||
+    s.includes('adminctrl') ||
+    h.includes('adminctrl')
+  );
+};
+
+const checkIsLegacyAdminUrl = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  if (checkIsAdminCtrlUrl()) return false;
   const p = (window.location.pathname || '').toLowerCase();
   const s = (window.location.search || '').toLowerCase();
   const h = (window.location.hash || '').toLowerCase();
@@ -47,11 +62,14 @@ export default function App() {
   });
 
   const [route, setRoute] = useState<AppRoute>(() => {
-    if (checkIsAdminUrl()) {
+    if (checkIsAdminCtrlUrl()) {
       const isAuth =
         (typeof window !== 'undefined' && sessionStorage.getItem('spark_admin_auth') === 'true') ||
         (typeof window !== 'undefined' && window.location.search.includes('preview=dashboard'));
       return isAuth ? 'admin_dashboard' : 'admin_login';
+    }
+    if (checkIsLegacyAdminUrl()) {
+      return 'not_found';
     }
     if (typeof window !== 'undefined' && (checkIsDemoUrl() || window.location.search.includes('preview=quiz'))) {
       return 'quiz_session';
@@ -120,12 +138,14 @@ export default function App() {
   // Monitor URL changes (popstate & hashchange)
   useEffect(() => {
     const handleLocationChange = () => {
-      if (checkIsAdminUrl()) {
+      if (checkIsAdminCtrlUrl()) {
         const isAuth =
           sessionStorage.getItem('spark_admin_auth') === 'true' ||
           window.location.search.includes('preview=dashboard');
         setIsAdminAuthenticated(isAuth);
         setRoute(isAuth ? 'admin_dashboard' : 'admin_login');
+      } else if (checkIsLegacyAdminUrl()) {
+        setRoute('not_found');
       } else if (checkIsDemoUrl()) {
         setActiveStudent({
           id: 'demo-tester-id',
@@ -142,7 +162,7 @@ export default function App() {
         setSessionQuestions(INITIAL_QUESTIONS);
         setRoute('quiz_session');
       } else {
-        setRoute((prev) => (prev.startsWith('admin') ? 'student_login' : prev));
+        setRoute((prev) => (prev.startsWith('admin') || prev === 'not_found' ? 'student_login' : prev));
       }
     };
 
@@ -268,20 +288,6 @@ export default function App() {
               </div>
             </div>
 
-            {route === 'student_login' && (
-              <button
-                type="button"
-                onClick={() => {
-                  window.history.pushState({}, '', '?admin');
-                  setRoute(isAdminAuthenticated ? 'admin_dashboard' : 'admin_login');
-                }}
-                className="text-xs text-slate-400 hover:text-white px-3 py-1.5 rounded-lg border border-slate-800 hover:border-slate-700 hover:bg-slate-800/50 transition-all flex items-center gap-1.5 cursor-pointer"
-              >
-                <ShieldCheck size={14} className="text-blue-400" />
-                <span>Admin Portal</span>
-              </button>
-            )}
-
             {route === 'admin_login' && (
               <button
                 type="button"
@@ -360,6 +366,38 @@ export default function App() {
                 />
               </motion.div>
             )}
+
+            {route === 'not_found' && (
+              <motion.div
+                key="not_found"
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.96 }}
+                transition={{ duration: 0.25 }}
+                className="w-full max-w-md mx-auto px-4 py-8"
+              >
+                <div className="surface-card rounded-2xl p-8 border border-white/10 text-center shadow-2xl">
+                  <div className="w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-rose-400 flex items-center justify-center mx-auto mb-4">
+                    <AlertTriangle size={32} />
+                  </div>
+                  <div className="text-4xl font-extrabold text-white font-mono tracking-tight mb-2">404</div>
+                  <h2 className="text-lg font-semibold text-slate-100 mb-2">Page Not Found</h2>
+                  <p className="text-xs text-slate-400 leading-relaxed mb-6">
+                    The requested URL was not found on this server.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.history.pushState({}, '', '/');
+                      setRoute('student_login');
+                    }}
+                    className="w-full py-2.5 px-4 rounded-xl font-medium text-xs text-white bg-blue-600 hover:bg-blue-500 transition-all cursor-pointer shadow-sm"
+                  >
+                    Return to Assessment Portal
+                  </button>
+                </div>
+              </motion.div>
+            )}
           </AnimatePresence>
         </main>
 
@@ -367,16 +405,7 @@ export default function App() {
         <footer className="w-full py-4 text-xs font-mono text-subtle-text border-t border-white/5">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-2">
             <span>SPARKTRON 2026 • Controlled ECE Assessment Platform • All Rights Reserved</span>
-            <button
-              type="button"
-              onClick={() => {
-                window.history.pushState({}, '', '?admin');
-                setRoute(isAdminAuthenticated ? 'admin_dashboard' : 'admin_login');
-              }}
-              className="text-slate-500 hover:text-blue-400 transition-colors cursor-pointer text-[11px]"
-            >
-              Admin Portal →
-            </button>
+            <span className="text-slate-600 text-[11px]">Authorized Access Only</span>
           </div>
         </footer>
       </div>

@@ -72,7 +72,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
   const [violationsCount, setViolationsCount] = useState(0);
   const [activeWarning, setActiveWarning] = useState<string | null>(null);
   const [adminBroadcastMsg, setAdminBroadcastMsg] = useState<string | null>(null);
-  const [isQuizPaused, setIsQuizPaused] = useState(false);
+  const [isQuizPaused, setIsQuizPaused] = useState<boolean>(() => !getQuizSchedule().isQuizActive);
 
   // Periodically compute seconds remaining until scheduled start
   useEffect(() => {
@@ -83,6 +83,9 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
 
     const checkSchedule = () => {
       const current = getQuizSchedule();
+      if (typeof current.isQuizActive === 'boolean') {
+        setIsQuizPaused(!current.isQuizActive);
+      }
       if (!current.scheduledStartTime) {
         setSecondsUntilStart(0);
         return;
@@ -103,6 +106,9 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
     channel.on('broadcast', { event: 'quiz_schedule_update' }, ({ payload }) => {
       if (payload) {
         setSchedule(payload);
+        if (typeof payload.isQuizActive === 'boolean') {
+          setIsQuizPaused(!payload.isQuizActive);
+        }
         if (payload.scheduledStartTime) {
           const diff = Math.floor((new Date(payload.scheduledStartTime).getTime() - Date.now()) / 1000);
           setSecondsUntilStart(Math.max(0, diff));
@@ -117,6 +123,9 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
         try {
           const updated = JSON.parse(e.newValue);
           setSchedule(updated);
+          if (typeof updated.isQuizActive === 'boolean') {
+            setIsQuizPaused(!updated.isQuizActive);
+          }
           if (updated.scheduledStartTime) {
             const diff = Math.floor((new Date(updated.scheduledStartTime).getTime() - Date.now()) / 1000);
             setSecondsUntilStart(Math.max(0, diff));
@@ -127,8 +136,28 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
       }
     };
 
+    const handleCustomEvent = (e: any) => {
+      const payload = e.detail;
+      if (payload) {
+        setSchedule(payload);
+        if (typeof payload.isQuizActive === 'boolean') {
+          setIsQuizPaused(!payload.isQuizActive);
+        }
+        if (payload.scheduledStartTime) {
+          const diff = Math.floor((new Date(payload.scheduledStartTime).getTime() - Date.now()) / 1000);
+          setSecondsUntilStart(Math.max(0, diff));
+        } else {
+          setSecondsUntilStart(0);
+        }
+      }
+    };
+
     window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    window.addEventListener('spark_quiz_schedule_change', handleCustomEvent);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('spark_quiz_schedule_change', handleCustomEvent);
+    };
   }, []);
 
   const currentQ = questions[currentIndex] || questions[0];
@@ -308,8 +337,9 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
   // Keyboard Navigation: keys 1-4, A-D for options, and Enter for Next Question
   useEffect(() => {
     const handleQuizKeyboard = (e: KeyboardEvent) => {
-      // Ignore if typing in an input
+      // Ignore if typing in an input or if quiz is paused
       if (['INPUT', 'TEXTAREA'].includes((e.target as HTMLElement)?.tagName)) return;
+      if (isQuizPaused) return;
 
       const key = e.key.toLowerCase();
       if (key === '1' || key === 'a') {
@@ -330,7 +360,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
 
     window.addEventListener('keydown', handleQuizKeyboard);
     return () => window.removeEventListener('keydown', handleQuizKeyboard);
-  }, [answers, currentIndex, currentQ.options, handleNextQuestion]);
+  }, [answers, currentIndex, currentQ.options, handleNextQuestion, isQuizPaused]);
 
   const isUrgent = timeLeft <= 15;
   const isMid = timeLeft <= 30 && timeLeft > 15;
@@ -347,12 +377,18 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
   // If the candidate is NOT bypassed and the scheduled start timer has not yet reached zero,
   // render the synchronized Waiting Room with live countdown lock!
   if (!isBypassed && secondsUntilStart > 0) {
-    const minutes = Math.floor(secondsUntilStart / 60);
+    const hours = Math.floor(secondsUntilStart / 3600);
+    const minutes = Math.floor((secondsUntilStart % 3600) / 60);
     const seconds = secondsUntilStart % 60;
-    const formattedCountdown = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-    const targetTimeFormatted = schedule.scheduledStartTime
-      ? new Date(schedule.scheduledStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
-      : null;
+    const formattedCountdown =
+      hours > 0
+        ? `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+        : `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    const targetTimeFormatted =
+      schedule.targetClockTime ||
+      (schedule.scheduledStartTime
+        ? new Date(schedule.scheduledStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
+        : null);
 
     return (
       <div className="w-full max-w-2xl mx-auto px-3 sm:px-4 py-4 sm:py-8">
@@ -375,6 +411,15 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
         </AnimatePresence>
 
         <div className="surface-card rounded-2xl p-5 sm:p-8 relative shadow-2xl border border-white/10 text-center">
+          {/* Paused Alert Banner in Waiting Room */}
+          {isQuizPaused && (
+            <div className="mb-4 p-3.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-200 text-xs sm:text-sm flex items-center justify-center gap-2">
+              <Lock size={16} className="text-amber-400 shrink-0" />
+              <span className="font-semibold text-amber-300">Quiz is currently PAUSED by Administrator.</span>
+              <span className="text-slate-300">The session is on hold.</span>
+            </div>
+          )}
+
           {/* Top pulse badge */}
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-mono font-medium mb-4">
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
@@ -399,7 +444,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
             {targetTimeFormatted && (
               <div className="text-xs text-slate-400 font-mono mt-2 flex items-center justify-center gap-1.5">
                 <Clock size={13} className="text-blue-400" />
-                <span>Scheduled Launch: {targetTimeFormatted}</span>
+                <span>Scheduled Launch Time: <strong className="text-blue-300">{targetTimeFormatted}</strong></span>
               </div>
             )}
           </div>
@@ -484,22 +529,32 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
 
   return (
     <div className="w-full max-w-3xl mx-auto px-2 sm:px-4 py-2 sm:py-6">
-      {/* Quiz Paused Overlay */}
+      {/* Quiz Paused Overlay (Freezes entire test view immediately) */}
       <AnimatePresence>
         {isQuizPaused && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex flex-col items-center justify-center p-4 sm:p-6 text-center"
+            className="fixed inset-0 z-50 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-4 sm:p-6 text-center select-none cursor-not-allowed pointer-events-auto"
           >
-            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 flex items-center justify-center mb-3 sm:mb-4">
-              <Lock size={24} />
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-400 flex items-center justify-center mb-4 shadow-xl shadow-amber-500/10">
+              <Lock size={34} className="animate-pulse" />
             </div>
-            <h3 className="text-lg sm:text-xl font-semibold text-white mb-1.5">Quiz Temporarily Paused</h3>
-            <p className="text-xs sm:text-sm text-slate-400 max-w-md leading-relaxed">
-              The test session has been paused by the administrator. The timer is currently frozen and will resume shortly.
+            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono text-xs font-semibold mb-3">
+              <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+              SESSION PAUSED BY ADMINISTRATOR
+            </div>
+            <h3 className="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-2 tracking-tight">
+              Assessment Temporarily Frozen
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-300 max-w-md leading-relaxed mb-5">
+              The administrator has paused the quiz session. Your answers, question progress, and remaining time are securely preserved.
             </p>
+            <div className="text-[11px] font-mono text-slate-400 px-3 py-2 rounded-xl bg-slate-900 border border-slate-800 flex items-center gap-2">
+              <Clock size={14} className="text-amber-400 shrink-0" />
+              <span>Questions will automatically unfreeze when the administrator resumes the quiz.</span>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

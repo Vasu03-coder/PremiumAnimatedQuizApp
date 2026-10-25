@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { KeyRound, ShieldCheck, AlertCircle, ArrowRight, Loader2, Sparkles, User, CheckCircle2 } from 'lucide-react';
+import { KeyRound, ShieldCheck, AlertCircle, ArrowRight, Loader2, CheckCircle2 } from 'lucide-react';
 import { verifyStudentByPasscode, PREDEFINED_PASSCODES } from '../lib/supabase';
 import type { StudentProfile } from '../types/quiz';
 
@@ -43,18 +43,6 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  // Quick test filler for Demo User (Bypasses Start Timer)
-  const handleUseDemoPasscode = () => {
-    setPasscode('DEMO2026');
-    setErrorMessage(null);
-  };
-
-  // Quick test filler for Official Candidate (Subject to Start Timer)
-  const handleUseOfficialPasscode = () => {
-    setPasscode('SPARK-ECE-101');
-    setErrorMessage(null);
   };
 
   return (
@@ -102,7 +90,7 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
                   setPasscode(e.target.value);
                   if (errorMessage) setErrorMessage(null);
                 }}
-                placeholder="e.g. SPARK-ECE-101 or DEMO2026"
+                placeholder="Enter candidate passcode"
                 className="w-full minimal-input rounded-xl pl-9 pr-3.5 py-2.5 text-sm uppercase tracking-wider font-mono focus:outline-none"
               />
             </div>
@@ -125,15 +113,9 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
                   <div className="text-[11px] text-slate-400 font-mono">{matchedPreview.email}</div>
                 </div>
               </div>
-              {matchedPreview.isDemo ? (
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
-                  Timer Bypassed
-                </span>
-              ) : (
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                  Connected
-                </span>
-              )}
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                Verified
+              </span>
             </motion.div>
           )}
 
@@ -156,45 +138,6 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
             )}
           </button>
         </form>
-
-        {/* Quick Testing Passcode Fillers */}
-        <div className="mt-5 pt-4 border-t border-white/[0.08] space-y-2 text-xs">
-          <div className="text-[11px] text-slate-400 font-medium text-center mb-1">
-            Test Passcode Fillers:
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {/* Demo Tester button (Bypasses Timer) */}
-            <button
-              type="button"
-              onClick={handleUseDemoPasscode}
-              className="text-left p-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/25 text-emerald-300 transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-1.5 font-semibold text-xs">
-                <Sparkles size={12} className="text-emerald-400" />
-                <span>DEMO2026 (Demo Tester)</span>
-              </div>
-              <div className="text-[10px] text-emerald-400/80 mt-0.5">
-                ★ Bypasses start timer (Instant quiz)
-              </div>
-            </button>
-
-            {/* Official Candidate button (Subject to Timer) */}
-            <button
-              type="button"
-              onClick={handleUseOfficialPasscode}
-              className="text-left p-2 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/25 text-blue-300 transition-all cursor-pointer"
-            >
-              <div className="flex items-center gap-1.5 font-semibold text-xs">
-                <User size={12} className="text-blue-400" />
-                <span>SPARK-ECE-101 (Candidate)</span>
-              </div>
-              <div className="text-[10px] text-blue-400/80 mt-0.5">
-                Connected to: sunkar@gmail.com
-              </div>
-            </button>
-          </div>
-        </div>
       </div>
     </div>
   );

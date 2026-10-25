@@ -71,9 +71,6 @@ export default function AdminLogin({ onSuccess, onCancel }: AdminLoginProps) {
                 {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
-            <div className="mt-1.5 flex justify-between text-[11px] text-slate-500 font-mono">
-              <span>Key: admin@spark2026</span>
-            </div>
           </div>
 
           <button
