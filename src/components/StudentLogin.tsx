@@ -7,6 +7,7 @@ import {
   syncBroadcastChannel,
   getOrCreateArenaChannel,
 } from '../lib/supabase';
+import { SPARKTRON_LOGO_DATA_URL } from '../assets/logo';
 import type { StudentProfile } from '../types/quiz';
 
 interface StudentLoginProps {
@@ -113,7 +114,7 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
           <div className="relative inline-block mb-3">
             <div className="absolute -inset-1.5 rounded-2xl bg-gradient-to-tr from-blue-600/40 via-cyan-500/30 to-purple-600/40 blur-md opacity-80 animate-pulse" />
             <img
-              src="/sparktron_logo.png"
+              src={SPARKTRON_LOGO_DATA_URL}
               alt="SPARKTRON 2026 Logo"
               className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover shadow-2xl border border-blue-400/40 mx-auto"
             />
