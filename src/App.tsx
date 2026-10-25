@@ -459,7 +459,7 @@ export default function App() {
         </header>
 
         {/* Main Content Area - Vertically & Horizontally Centered on Mobile */}
-        <main className="flex-1 flex items-center justify-center py-4 px-2.5 sm:px-4 relative z-10 w-full min-h-[calc(100vh-3.5rem)]">
+        <main className="flex-1 flex items-center justify-center py-2 sm:py-4 px-1 sm:px-4 relative z-10 w-full min-h-[calc(100vh-3.5rem)]">
           <AnimatePresence mode="wait">
             {route === 'student_login' && (
               <motion.div

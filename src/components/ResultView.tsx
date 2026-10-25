@@ -148,7 +148,7 @@ export default function ResultView({
   });
 
   return (
-    <div className="w-full max-w-3xl mx-auto px-3 sm:px-4 py-4 sm:py-8">
+    <div className="w-full max-w-3xl mx-auto px-1 sm:px-4 py-2 sm:py-8">
       <AnimatePresence mode="wait">
         {!isPublished ? (
           /* ============================================================== */
@@ -160,7 +160,7 @@ export default function ResultView({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.97 }}
             transition={{ duration: 0.2 }}
-            className="surface-card rounded-2xl sm:rounded-3xl p-5 sm:p-8 text-center relative border border-white/[0.08] shadow-2xl overflow-hidden"
+            className="surface-card rounded-xl sm:rounded-3xl p-3.5 sm:p-8 text-center relative border border-white/[0.08] shadow-2xl overflow-hidden"
           >
             {/* Ambient background glow */}
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-80 h-32 bg-amber-500/10 blur-3xl pointer-events-none" />
@@ -275,7 +275,7 @@ export default function ResultView({
             className="space-y-6"
           >
             {/* Top Score Banner */}
-            <div className="surface-card rounded-2xl sm:rounded-3xl p-6 sm:p-8 text-center relative border border-emerald-500/30 shadow-2xl overflow-hidden">
+            <div className="surface-card rounded-xl sm:rounded-3xl p-3.5 sm:p-8 text-center relative border border-emerald-500/30 shadow-2xl overflow-hidden">
               <div className="absolute top-0 left-1/2 -translate-x-1/2 w-96 h-32 bg-emerald-500/15 blur-3xl pointer-events-none" />
 
               <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-xs font-mono font-semibold mb-4">
@@ -336,7 +336,7 @@ export default function ResultView({
             </div>
 
             {/* Question-by-Question Review Section */}
-            <div className="surface-card rounded-2xl sm:rounded-3xl p-5 sm:p-7 border border-white/[0.08] shadow-xl">
+            <div className="surface-card rounded-xl sm:rounded-3xl p-2.5 sm:p-7 border border-white/[0.08] shadow-xl">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-6 pb-4 border-b border-white/[0.08]">
                 <div>
                   <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
@@ -398,7 +398,7 @@ export default function ResultView({
                   return (
                     <div
                       key={q.id || idx}
-                      className={`p-4 sm:p-5 rounded-xl border transition-all ${
+                      className={`p-2.5 sm:p-5 rounded-xl border transition-all ${
                         isPenalized
                           ? 'bg-amber-950/20 border-amber-500/40'
                           : isCorrect

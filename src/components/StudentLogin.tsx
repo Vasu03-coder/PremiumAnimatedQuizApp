@@ -106,8 +106,8 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
   };
 
   return (
-    <div className="w-full max-w-md mx-auto px-2.5 sm:px-4 my-auto">
-      <div className="surface-card rounded-xl sm:rounded-2xl p-4 sm:p-8 relative">
+    <div className="w-full max-w-md mx-auto px-1 sm:px-4 my-auto">
+      <div className="surface-card rounded-xl sm:rounded-2xl p-3.5 sm:p-8 relative">
         {/* Header with Official Glowing Logo */}
         <div className="text-center mb-6">
           <div className="relative inline-block mb-3">

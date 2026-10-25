@@ -473,7 +473,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
   // 2. Student Waiting Lobby Screen (Admin has not started quiz yet)
   if (isLobby) {
     return (
-      <div className="w-full max-w-lg mx-auto px-2 sm:px-4 py-2 sm:py-6">
+      <div className="w-full max-w-xl mx-auto px-1 sm:px-4 py-2 sm:py-6">
         {/* Admin Broadcast Banner */}
         <AnimatePresence>
           {adminBroadcastMsg && (
@@ -492,7 +492,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
           )}
         </AnimatePresence>
 
-        <div className="surface-card rounded-2xl p-4 sm:p-6 relative shadow-2xl border border-white/10 text-center">
+        <div className="surface-card rounded-xl sm:rounded-2xl p-3 sm:p-6 relative shadow-2xl border border-white/10 text-center">
           {/* Top pulse badge */}
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 text-[11px] sm:text-xs font-mono font-medium mb-2.5">
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -598,19 +598,12 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
             </div>
           </div>
 
-          {/* Bottom Tester Skip */}
-          <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
+          {/* Bottom Connection Status */}
+          <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-center text-[11px] text-slate-400">
             <div className="flex items-center gap-1.5">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               <span>Realtime cloud connected</span>
             </div>
-            <button
-              type="button"
-              onClick={() => setHasTesterBypassed(true)}
-              className="text-blue-400 hover:text-blue-300 underline underline-offset-2 cursor-pointer transition-colors"
-            >
-              Tester: Skip Waiting Room
-            </button>
           </div>
         </div>
       </div>
@@ -618,7 +611,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
   }
 
   return (
-    <div className="w-full max-w-3xl mx-auto px-2 sm:px-4 py-2 sm:py-6">
+    <div className="w-full max-w-3xl mx-auto px-1 sm:px-4 py-1.5 sm:py-6">
       {/* Admin Broadcast Banner */}
       <AnimatePresence>
         {adminBroadcastMsg && (
@@ -626,7 +619,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="mb-2.5 sm:mb-4 p-2.5 sm:p-3.5 rounded-lg sm:rounded-xl bg-blue-950/70 border border-blue-500/30 text-blue-200 text-xs sm:text-sm flex items-center gap-2.5 backdrop-blur-md"
+            className="mb-2 sm:mb-4 p-2 sm:p-3.5 rounded-lg sm:rounded-xl bg-blue-950/70 border border-blue-500/30 text-blue-200 text-xs sm:text-sm flex items-center gap-2.5 backdrop-blur-md"
           >
             <Bell size={16} className="text-blue-400 shrink-0" />
             <div className="flex-1 text-xs sm:text-sm">
@@ -644,7 +637,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
             initial={{ opacity: 0, y: -8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="mb-2.5 sm:mb-4 p-2.5 sm:p-3 rounded-lg sm:rounded-xl bg-red-950/80 border border-red-500/40 text-red-200 text-xs flex items-start gap-2 backdrop-blur-md"
+            className="mb-2 sm:mb-4 p-2 sm:p-3 rounded-lg sm:rounded-xl bg-red-950/80 border border-red-500/40 text-red-200 text-xs flex items-start gap-2 backdrop-blur-md"
           >
             <ShieldAlert size={16} className="text-red-400 shrink-0 mt-0.5" />
             <div className="flex-1 font-medium leading-relaxed">{activeWarning}</div>
@@ -653,7 +646,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
       </AnimatePresence>
 
       {/* MAIN PROFESSIONAL ASSESSMENT CARD */}
-      <div className="surface-card rounded-xl sm:rounded-2xl p-3.5 sm:p-7 relative shadow-2xl">
+      <div className="surface-card rounded-xl sm:rounded-2xl p-2.5 sm:p-7 relative shadow-2xl">
         {/* Subtle Top Progress Line */}
         <div className="absolute top-0 left-0 right-0 h-1 bg-slate-800/80 rounded-t-xl sm:rounded-t-2xl overflow-hidden">
           <div
