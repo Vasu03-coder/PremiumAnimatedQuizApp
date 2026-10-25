@@ -19,6 +19,8 @@ import {
   syncBroadcastChannel,
   getOrCreateArenaChannel,
   releasePasscodeSession,
+  getCandidateSubmission,
+  clearStudentCompleted,
 } from './lib/supabase';
 
 type AppRoute = 'student_login' | 'quiz_session' | 'quiz_result' | 'admin_login' | 'admin_dashboard' | 'not_found';
@@ -78,6 +80,12 @@ export default function App() {
     if (typeof window !== 'undefined' && (checkIsDemoUrl() || window.location.search.includes('preview=quiz'))) {
       return 'quiz_session';
     }
+    if (typeof window !== 'undefined') {
+      const savedRoute = sessionStorage.getItem('spark_current_route');
+      if (savedRoute === 'quiz_result') {
+        return 'quiz_result';
+      }
+    }
     return 'student_login';
   });
 
@@ -110,6 +118,12 @@ export default function App() {
         is_demo: false,
       };
     }
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = sessionStorage.getItem('spark_active_student');
+        if (stored) return JSON.parse(stored);
+      } catch (e) {}
+    }
     return null;
   });
   const [sessionQuestions, setSessionQuestions] = useState<Question[]>(() => {
@@ -122,7 +136,25 @@ export default function App() {
     score: number;
     totalQuestions: number;
     violationsCount: number;
-  } | null>(null);
+  } | null>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = sessionStorage.getItem('spark_active_student');
+        if (stored) {
+          const s = JSON.parse(stored);
+          const sub = getCandidateSubmission(s.email, s.passcode);
+          if (sub) {
+            return {
+              score: sub.score,
+              totalQuestions: sub.total_questions,
+              violationsCount: sub.violations_count,
+            };
+          }
+        }
+      } catch (e) {}
+    }
+    return null;
+  });
 
   // Sync questions from Cloud & local storage on mount
   useEffect(() => {
@@ -178,24 +210,60 @@ export default function App() {
     };
   }, []);
 
-  // Listen for admin reset events for the active student session
+  // Schedule re-round passcodes check on mount and on schedule update
   useEffect(() => {
-    if (!activeStudent) return;
-    const currentEmail = activeStudent.email.toLowerCase();
-    const activePasscode = (activeStudent.passcode || activeStudent.registration_code || '').toUpperCase();
+    const handleScheduleCheck = (sched: any) => {
+      if (!sched) return;
+      const passcodes: string[] = sched.reRoundPasscodes || [];
+      const emails: string[] = sched.reRoundEmails || [];
+      passcodes.forEach((p) => clearStudentCompleted('', p));
+      emails.forEach((e) => clearStudentCompleted(e, ''));
+    };
 
-    const doReset = (targetEmail: string, targetPasscode?: string) => {
-      const emailMatch = targetEmail && targetEmail.toLowerCase() === currentEmail;
-      const codeMatch = targetPasscode && targetPasscode.toUpperCase() === activePasscode;
-      const memberMatch = activeStudent.members?.some(
-        (m) => m.email.toLowerCase() === (targetEmail || '').toLowerCase()
-      );
+    handleScheduleCheck(getQuizSchedule());
 
-      if (emailMatch || codeMatch || memberMatch) {
-        releasePasscodeSession(activePasscode);
-        setActiveStudent(null);
-        setQuizResult(null);
-        setRoute('student_login');
+    const handleCustom = (e: any) => handleScheduleCheck(e.detail);
+    window.addEventListener('spark_quiz_schedule_change', handleCustom);
+    return () => window.removeEventListener('spark_quiz_schedule_change', handleCustom);
+  }, []);
+
+  // Listen for admin reset events across the arena (always active across tabs/devices)
+  useEffect(() => {
+    const handleResetEvent = (payload: any) => {
+      if (!payload) return;
+      const targetEmail = (payload.studentEmail || '').toLowerCase();
+      const targetPasscode = (payload.passcode || '').toUpperCase();
+      const allEmails: string[] = Array.isArray(payload.allEmails)
+        ? payload.allEmails.map((e: string) => e.toLowerCase())
+        : [targetEmail];
+
+      allEmails.forEach((em) => {
+        if (em) clearStudentCompleted(em, targetPasscode);
+      });
+      if (targetPasscode) {
+        clearStudentCompleted('', targetPasscode);
+        releasePasscodeSession(targetPasscode);
+      }
+
+      if (activeStudent) {
+        const currentEmail = activeStudent.email.toLowerCase();
+        const activePasscode = (activeStudent.passcode || activeStudent.registration_code || '').toUpperCase();
+        const emailMatch = allEmails.includes(currentEmail);
+        const codeMatch = targetPasscode && targetPasscode === activePasscode;
+        const memberMatch = activeStudent.members?.some((m) =>
+          allEmails.includes((m.email || '').toLowerCase())
+        );
+
+        if (emailMatch || codeMatch || memberMatch) {
+          releasePasscodeSession(activePasscode);
+          setActiveStudent(null);
+          setQuizResult(null);
+          try {
+            sessionStorage.removeItem('spark_active_student');
+            sessionStorage.removeItem('spark_current_route');
+          } catch (e) {}
+          setRoute('student_login');
+        }
       }
     };
 
@@ -203,7 +271,7 @@ export default function App() {
       const channel = syncBroadcastChannel;
       const handleBroadcast = (e: MessageEvent) => {
         if (e.data?.type === 'reset_student_session') {
-          doReset(e.data.payload?.studentEmail || '', e.data.payload?.passcode);
+          handleResetEvent(e.data.payload);
         }
       };
       channel.addEventListener('message', handleBroadcast);
@@ -212,13 +280,39 @@ export default function App() {
 
     const ch = getOrCreateArenaChannel();
     ch.on('broadcast', { event: 'reset_student_session' }, ({ payload }) => {
-      doReset(payload?.studentEmail || '', payload?.passcode);
+      handleResetEvent(payload);
     });
   }, [activeStudent]);
 
   // Student login success handler
   const handleStudentLoginSuccess = (student: StudentProfile) => {
     setActiveStudent(student);
+    try {
+      sessionStorage.setItem('spark_active_student', JSON.stringify(student));
+    } catch (e) {}
+
+    // If candidate has already submitted this examination, route directly to result review
+    if (student.is_already_completed) {
+      const sub = getCandidateSubmission(student.email, student.passcode || student.registration_code);
+      setQuizResult({
+        score: sub?.score ?? 0,
+        totalQuestions: sub?.total_questions ?? questions.length,
+        violationsCount: sub?.violations_count ?? 0,
+      });
+      if (sub?.question_snapshot && sub.question_snapshot.length > 0) {
+        setSessionQuestions(sub.question_snapshot);
+      }
+      try {
+        sessionStorage.setItem('spark_current_route', 'quiz_result');
+      } catch (e) {}
+      setRoute('quiz_result');
+      return;
+    }
+
+    try {
+      sessionStorage.setItem('spark_current_route', 'quiz_session');
+    } catch (e) {}
+
     const shuffled = getShuffledQuestions(questions);
     setSessionQuestions(shuffled);
     setRoute('quiz_session');
@@ -265,6 +359,9 @@ export default function App() {
       totalQuestions: results.totalQuestions,
       violationsCount: results.violationsCount,
     });
+    try {
+      sessionStorage.setItem('spark_current_route', 'quiz_result');
+    } catch (e) {}
     setRoute('quiz_result');
 
     const submission: QuizSubmission = {
@@ -278,6 +375,7 @@ export default function App() {
       answers: results.answers,
       penalized_questions: results.penalizedQuestions,
       completed_at: new Date().toISOString(),
+      question_snapshot: sessionQuestions.length > 0 ? sessionQuestions : questions,
     };
 
     broadcastQuizCompleted(submission);
@@ -287,6 +385,10 @@ export default function App() {
   const handleResetSession = () => {
     setActiveStudent(null);
     setQuizResult(null);
+    try {
+      sessionStorage.removeItem('spark_active_student');
+      sessionStorage.removeItem('spark_current_route');
+    } catch (e) {}
     setRoute('student_login');
     window.history.pushState({}, '', '/');
   };
@@ -326,9 +428,11 @@ export default function App() {
         <header className="w-full border-b border-white/[0.08] bg-slate-950/70 backdrop-blur-md sticky top-0 z-50">
           <div className="max-w-6xl mx-auto px-3.5 sm:px-6 h-13 sm:h-14 flex items-center justify-between">
             <div className="flex items-center gap-2.5 sm:gap-3">
-              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-600/15 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold text-xs tracking-wide shrink-0">
-                ST
-              </div>
+              <img
+                src="/sparktron_logo.png"
+                alt="SPARKTRON 2026 Logo"
+                className="w-8 h-8 rounded-lg object-cover shadow-md shadow-blue-500/20 border border-blue-500/30 shrink-0"
+              />
               <div>
                 <div className="text-xs sm:text-sm font-semibold tracking-tight text-white flex items-center gap-2">
                   <span>SPARKTRON 2026</span>
@@ -354,8 +458,8 @@ export default function App() {
           </div>
         </header>
 
-        {/* Main Content Area */}
-        <main className="flex-1 flex items-start sm:items-center justify-center py-2.5 sm:py-8 px-2 sm:px-4 relative z-10 w-full">
+        {/* Main Content Area - Vertically & Horizontally Centered on Mobile */}
+        <main className="flex-1 flex items-center justify-center py-4 px-2.5 sm:px-4 relative z-10 w-full min-h-[calc(100vh-3.5rem)]">
           <AnimatePresence mode="wait">
             {route === 'student_login' && (
               <motion.div
@@ -364,7 +468,7 @@ export default function App() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.15 }}
-                className="w-full"
+                className="w-full flex items-center justify-center my-auto"
               >
                 <StudentLogin onLoginSuccess={handleStudentLoginSuccess} />
               </motion.div>
@@ -387,7 +491,7 @@ export default function App() {
               </motion.div>
             )}
 
-            {route === 'quiz_result' && activeStudent && quizResult && (
+            {route === 'quiz_result' && activeStudent && (
               <motion.div
                 key="quiz_result"
                 initial={{ opacity: 0 }}
@@ -398,8 +502,10 @@ export default function App() {
               >
                 <ResultView
                   student={activeStudent}
-                  totalQuestions={quizResult.totalQuestions}
-                  violationsCount={quizResult.violationsCount}
+                  totalQuestions={quizResult?.totalQuestions || questions.length}
+                  violationsCount={quizResult?.violationsCount || 0}
+                  submission={getCandidateSubmission(activeStudent.email, activeStudent.passcode || activeStudent.registration_code)}
+                  questions={sessionQuestions.length > 0 ? sessionQuestions : questions}
                   onHome={handleResetSession}
                 />
               </motion.div>

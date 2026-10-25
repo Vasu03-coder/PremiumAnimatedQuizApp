@@ -437,14 +437,25 @@ export async function verifyStudentByPasscode(
       is_demo: candidateData.isDemo || false,
     };
 
-    // 3. Single-Attempt Check: Check if candidate or passcode has completed
+    // 3. Single-Attempt & Re-Round Check
+    const schedule = getQuizSchedule();
+    const cleanPass = (resolvedProfile.passcode || cleanPasscode).toUpperCase();
+    const isReRoundAuthorized =
+      Boolean(schedule.reRoundPasscodes && schedule.reRoundPasscodes.includes(cleanPass)) ||
+      Boolean(schedule.reRoundEmails && schedule.reRoundEmails.some((em) => em.toLowerCase() === cleanEmail));
+
+    if (isReRoundAuthorized) {
+      // Admin granted a Re-round! Purge previous completion lock on this device so candidate can take the quiz
+      clearStudentCompleted(cleanEmail, cleanPass);
+    }
+
     const completionCheck = isStudentCompleted(resolvedProfile.email, resolvedProfile.passcode);
-    if (completionCheck.completed) {
+    if (completionCheck.completed && !isReRoundAuthorized) {
+      resolvedProfile.is_already_completed = true;
       return {
-        success: false,
-        message: `Assessment Completed: Candidate team has already submitted this examination (Score: ${
-          completionCheck.score ?? 0
-        } pts). Multiple attempts are locked. If you encountered an issue (such as a call interruption), please ask the administrator to grant a Re-round.`,
+        success: true,
+        student: resolvedProfile,
+        message: 'Assessment already submitted. Redirecting to result portal.',
       };
     }
 
@@ -816,6 +827,22 @@ export function broadcastQuizCompleted(submission: QuizSubmission) {
     markStudentCompleted(submission.participant_email, submission.registration_id || '', submission.score);
   }
 
+  // Clear candidate from reRoundPasscodes in schedule now that attempt is finished
+  try {
+    const sched = getQuizSchedule();
+    if (sched.reRoundPasscodes || sched.reRoundEmails) {
+      const cleanPass = (submission.registration_id || '').toUpperCase();
+      const cleanMail = (submission.participant_email || '').toLowerCase();
+      const updatedPass = (sched.reRoundPasscodes || []).filter((p) => p !== cleanPass);
+      const updatedMail = (sched.reRoundEmails || []).filter((e) => e !== cleanMail);
+      broadcastQuizSchedule({
+        ...sched,
+        reRoundPasscodes: updatedPass,
+        reRoundEmails: updatedMail,
+      });
+    }
+  } catch (e) {}
+
   if (syncBroadcastChannel) {
     try {
       syncBroadcastChannel.postMessage({ type: 'quiz_completed', payload: submission });
@@ -844,14 +871,43 @@ export function broadcastAdminAnnouncement(message: string) {
   });
 }
 
-export function broadcastResetStudent(studentEmail: string, passcode?: string) {
-  clearStudentCompleted(studentEmail, passcode);
+export function broadcastResetStudent(
+  studentEmail: string,
+  passcode?: string,
+  allEmails?: string[]
+) {
+  const emailsToClear = Array.from(new Set([studentEmail, ...(allEmails || [])].filter(Boolean)));
+  emailsToClear.forEach((em) => {
+    clearStudentCompleted(em, passcode);
+  });
   if (passcode) {
     releasePasscodeSession(passcode);
   }
+
+  // Update synchronized schedule with re-round authorization
+  const currentSched = getQuizSchedule();
+  const cleanPass = (passcode || '').trim().toUpperCase();
+  const updatedReRoundPasscodes = Array.from(
+    new Set([...(currentSched.reRoundPasscodes || []), cleanPass].filter(Boolean))
+  );
+  const updatedReRoundEmails = Array.from(
+    new Set([
+      ...(currentSched.reRoundEmails || []),
+      ...emailsToClear.map((e) => e.toLowerCase()),
+    ].filter(Boolean))
+  );
+
+  const updatedSched: QuizSchedulePayload = {
+    ...currentSched,
+    reRoundPasscodes: updatedReRoundPasscodes,
+    reRoundEmails: updatedReRoundEmails,
+  };
+  broadcastQuizSchedule(updatedSched);
+
   const payload = {
     studentEmail: (studentEmail || '').toLowerCase(),
     passcode: (passcode || '').toUpperCase(),
+    allEmails: emailsToClear.map((e) => e.toLowerCase()),
   };
   if (syncBroadcastChannel) {
     try {
@@ -878,6 +934,8 @@ export interface QuizSchedulePayload {
   durationMinutes?: number;
   message?: string;
   startedAt?: string | null;
+  reRoundPasscodes?: string[];
+  reRoundEmails?: string[];
 }
 
 export function broadcastQuizSchedule(payload: QuizSchedulePayload) {
@@ -1030,6 +1088,70 @@ export function clearStudentCompleted(email: string, passcode?: string) {
     }
   } catch (e) {}
 }
+
+/**
+ * Check if the quiz results have been published by the Admin
+ * When false, students see "Waiting for Administrator to Publish Results"
+ */
+export function isResultsPublished(): boolean {
+  try {
+    return localStorage.getItem('spark_results_published') === 'true';
+  } catch (e) {
+    return false;
+  }
+}
+
+/**
+ * Broadcast result publication state to all student devices
+ */
+export function broadcastResultsPublishState(isPublished: boolean) {
+  try {
+    localStorage.setItem('spark_results_published', isPublished ? 'true' : 'false');
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('spark_results_published_change', { detail: { isPublished } })
+      );
+    }
+  } catch (e) {}
+
+  if (syncBroadcastChannel) {
+    try {
+      syncBroadcastChannel.postMessage({
+        type: 'results_published_change',
+        payload: { isPublished },
+      });
+    } catch (e) {}
+  }
+
+  const ch = getOrCreateArenaChannel();
+  return ch.send({
+    type: 'broadcast',
+    event: 'results_published_change',
+    payload: { isPublished },
+  });
+}
+
+/**
+ * Retrieve saved submission for candidate by email or passcode
+ */
+export function getCandidateSubmission(email?: string, passcode?: string): QuizSubmission | null {
+  try {
+    const cleanEmail = (email || '').toLowerCase().trim();
+    const cleanPasscode = (passcode || '').toUpperCase().trim();
+    const subStr = localStorage.getItem('spark_quiz_submissions');
+    if (subStr) {
+      const subs: QuizSubmission[] = JSON.parse(subStr);
+      const found = subs.find(
+        (s) =>
+          (cleanEmail && s.participant_email && s.participant_email.toLowerCase().trim() === cleanEmail) ||
+          (cleanPasscode && s.registration_id && s.registration_id.toUpperCase().includes(cleanPasscode))
+      );
+      if (found) return found;
+    }
+  } catch (e) {}
+  return null;
+}
+
 
 /**
  * Cloud and Local synchronized question bank helpers

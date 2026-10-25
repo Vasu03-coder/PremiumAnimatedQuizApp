@@ -30,7 +30,11 @@ import {
   KeyRound,
   Copy,
   Play,
-  Timer
+  Timer,
+  EyeOff,
+  FileText,
+  XCircle,
+  Square
 } from 'lucide-react';
 import type { Question, LiveStudentStatus, ProctoringViolation, QuizSubmission } from '../../types/quiz';
 import {
@@ -46,6 +50,8 @@ import {
   syncBroadcastChannel,
   clearStudentCompleted,
   PREDEFINED_PASSCODES,
+  isResultsPublished,
+  broadcastResultsPublishState,
   type QuizSchedulePayload,
 } from '../../lib/supabase';
 
@@ -138,6 +144,59 @@ export default function AdminDashboard({
   const [exactTimeInput, setExactTimeInput] = useState<string>('10:00');
   const [currentClockTime, setCurrentClockTime] = useState<string>(() => new Date().toLocaleTimeString());
   const [copiedPasscode, setCopiedPasscode] = useState<string | null>(null);
+
+  // Results Publication & Candidate Answer Audit Modal States
+  const [resultsPublished, setResultsPublished] = useState<boolean>(() => isResultsPublished());
+  const [inspectingCandidate, setInspectingCandidate] = useState<{
+    candidate: LiveStudentStatus;
+    submission: QuizSubmission | null;
+  } | null>(null);
+
+  // Helper to retrieve candidate submission data from local storage
+  const getCandidateSubmissionData = (candidate: LiveStudentStatus): QuizSubmission | null => {
+    try {
+      const cleanEmail = (candidate.email || '').toLowerCase().trim();
+      const cleanPass = (candidate.passcode || '').toUpperCase().trim();
+      const subStr = localStorage.getItem('spark_quiz_submissions');
+      if (subStr) {
+        const subs: QuizSubmission[] = JSON.parse(subStr);
+        const found = subs.find(
+          (s) =>
+            (cleanEmail && s.participant_email && s.participant_email.toLowerCase().trim() === cleanEmail) ||
+            (cleanPass && s.registration_id && s.registration_id.toUpperCase().includes(cleanPass)) ||
+            (candidate.members?.some(
+              (m) =>
+                m.email &&
+                m.email.toLowerCase().trim() === (s.participant_email || '').toLowerCase().trim()
+            ))
+        );
+        if (found) return found;
+      }
+    } catch (e) {}
+    return null;
+  };
+
+  const handleTogglePublishResults = () => {
+    const next = !resultsPublished;
+    setResultsPublished(next);
+    broadcastResultsPublishState(next);
+    showToast(
+      next
+        ? '📢 Assessment results published to all candidates!'
+        : '🔒 Results unpublished. Candidates returned to waiting state.'
+    );
+  };
+
+  // Listen to results published changes from external events
+  useEffect(() => {
+    const handleResultsChange = (e: any) => {
+      if (e.detail?.isPublished !== undefined) {
+        setResultsPublished(Boolean(e.detail.isPublished));
+      }
+    };
+    window.addEventListener('spark_results_published_change', handleResultsChange);
+    return () => window.removeEventListener('spark_results_published_change', handleResultsChange);
+  }, []);
 
   // Live clock interval & countdown interval
   useEffect(() => {
@@ -294,28 +353,6 @@ export default function AdminDashboard({
     const studentPasscode = (passcode || '').toUpperCase();
     const studentEmail = (email || '').toLowerCase();
 
-    // Broadcast reset event across Supabase Realtime & BroadcastChannel
-    broadcastResetStudent(studentEmail, studentPasscode);
-
-    // Update local state in Admin Dashboard
-    setStudents((prev) => {
-      const targetKey = findCandidateKey(prev, studentEmail, studentPasscode);
-      if (!targetKey || !prev[targetKey]) return prev;
-
-      return {
-        ...prev,
-        [targetKey]: {
-          ...prev[targetKey],
-          score: 0,
-          currentQuestion: 0,
-          violationsCount: 0,
-          status: 'offline',
-          completedAt: undefined,
-          lastSeen: new Date().toISOString(),
-        },
-      };
-    });
-
     // Collect all emails associated with this candidate team
     const targetKey = findCandidateKey(students, studentEmail, studentPasscode);
     const candidateObj = targetKey ? students[targetKey] : null;
@@ -326,6 +363,28 @@ export default function AdminDashboard({
         if (m.email) allCandidateEmails.add(m.email.toLowerCase());
       });
     }
+
+    // Broadcast reset event with all emails across Supabase Realtime & BroadcastChannel
+    broadcastResetStudent(studentEmail, studentPasscode, Array.from(allCandidateEmails));
+
+    // Update local state in Admin Dashboard
+    setStudents((prev) => {
+      const key = findCandidateKey(prev, studentEmail, studentPasscode);
+      if (!key || !prev[key]) return prev;
+
+      return {
+        ...prev,
+        [key]: {
+          ...prev[key],
+          score: 0,
+          currentQuestion: 0,
+          violationsCount: 0,
+          status: 'offline',
+          completedAt: undefined,
+          lastSeen: new Date().toISOString(),
+        },
+      };
+    });
 
     // Wipe recorded proctoring violations for this candidate/team
     setViolations((prev) =>
@@ -495,6 +554,8 @@ export default function AdminDashboard({
           });
         } else if (data.type === 'quiz_schedule_update' && data.payload) {
           setSchedule(data.payload);
+        } else if (data.type === 'results_published_change') {
+          setResultsPublished(Boolean(data.payload?.isPublished));
         }
       };
       syncBroadcastChannel.addEventListener('message', handleBroadcast);
@@ -779,23 +840,30 @@ export default function AdminDashboard({
       {/* Top Header */}
       <header className={`${headerClass} sticky top-0 z-40 px-4 sm:px-8 py-3.5 transition-colors duration-200`}>
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2.5 mb-1">
-              <span className={`font-semibold text-xs tracking-wider uppercase px-2.5 py-0.5 rounded-md font-mono border ${
-                isLight ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
-              }`}>
-                Technical Quiz Portal
-              </span>
-              <span className="text-xs font-mono text-slate-400 flex items-center gap-1.5">
-                <span
-                  className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}
-                />
-                {isConnected ? 'Realtime Connected' : 'Connecting...'}
-              </span>
+          <div className="flex items-center gap-3">
+            <img
+              src="/sparktron_logo.png"
+              alt="SPARKTRON 2026 Logo"
+              className="w-11 h-11 rounded-xl object-cover shadow-md shadow-blue-500/20 border border-blue-500/30 shrink-0"
+            />
+            <div>
+              <div className="flex items-center gap-2.5 mb-1">
+                <span className={`font-semibold text-xs tracking-wider uppercase px-2.5 py-0.5 rounded-md font-mono border ${
+                  isLight ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-blue-500/10 text-blue-400 border-blue-500/20'
+                }`}>
+                  SPARKTRON 2026
+                </span>
+                <span className="text-xs font-mono text-slate-400 flex items-center gap-1.5">
+                  <span
+                    className={`w-2 h-2 rounded-full ${isConnected ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`}
+                  />
+                  {isConnected ? 'Realtime Connected' : 'Connecting...'}
+                </span>
+              </div>
+              <h1 className={`text-xl sm:text-2xl font-bold tracking-tight ${textPrimary}`}>
+                Admin Control Deck
+              </h1>
             </div>
-            <h1 className={`text-xl sm:text-2xl font-bold tracking-tight ${textPrimary}`}>
-              Admin Control Deck
-            </h1>
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-between md:justify-end">
@@ -955,7 +1023,7 @@ export default function AdminDashboard({
                 <Clock size={20} className={schedule.state === 'countdown' ? 'animate-pulse' : ''} />
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <h3 className={`text-base font-bold ${textPrimary}`}>
                     Synchronized Assessment Command Center
                   </h3>
@@ -975,9 +1043,22 @@ export default function AdminDashboard({
                       WAITING IN LOBBY ({lobbyCount} READY)
                     </span>
                   )}
+
+                  {/* Results Published Indicator Badge */}
+                  {resultsPublished ? (
+                    <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-semibold flex items-center gap-1">
+                      <CheckCircle2 size={11} className="text-emerald-400" />
+                      RESULTS: PUBLISHED
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 font-semibold flex items-center gap-1">
+                      <Lock size={10} className="text-slate-400" />
+                      RESULTS: HIDDEN
+                    </span>
+                  )}
                 </div>
                 <p className={`text-xs ${textMuted} mt-0.5`}>
-                  Candidates wait in the lobby until you click Start Quiz. Once launched with the 10-second countdown, all screens unlock simultaneously.
+                  Start or stop the synchronized examination. When all candidates finish, publish results to reveal scores and answer review across all screens.
                 </p>
               </div>
             </div>
@@ -990,7 +1071,7 @@ export default function AdminDashboard({
           </div>
 
           {/* Middle Row: Current Active Status Details & Primary Host Actions */}
-          <div className="py-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-white/[0.08]">
+          <div className="py-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div>
               {schedule.state === 'countdown' ? (
                 <div className="flex flex-wrap items-center gap-3">
@@ -1048,6 +1129,7 @@ export default function AdminDashboard({
                     type="button"
                     onClick={handleResetToLobby}
                     className="px-3.5 py-2 rounded-xl text-xs font-semibold text-rose-300 bg-rose-950/60 hover:bg-rose-900/60 border border-rose-800/60 flex items-center gap-1.5 cursor-pointer transition-all"
+                    title="Cancel countdown and return to lobby"
                   >
                     <X size={14} />
                     <span>Cancel Countdown</span>
@@ -1069,134 +1151,41 @@ export default function AdminDashboard({
                 <button
                   type="button"
                   onClick={handleResetToLobby}
-                  className="px-3.5 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-1.5 cursor-pointer transition-all"
-                  title="Return quiz session to waiting lobby"
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-rose-200 bg-rose-950/70 hover:bg-rose-900/80 border border-rose-700 flex items-center gap-2 cursor-pointer transition-all shadow-md shadow-rose-950/30"
+                  title="Stop quiz and return all candidate screens to waiting lobby"
                 >
-                  <RotateCcw size={13} />
-                  <span>Return to Lobby</span>
+                  <Square size={13} fill="currentColor" />
+                  <span>Stop Quiz (Return to Lobby)</span>
                 </button>
               )}
-            </div>
-          </div>
 
-          {/* Bottom Row: Exact Clock Time & Minutes Scheduler */}
-          <div className="pt-4 flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4">
-            {/* Clock Time Picker (e.g. 10:00 AM) */}
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-semibold text-slate-300 flex items-center gap-1">
-                <Clock size={13} className="text-blue-400" />
-                <span>Set Clock Time:</span>
-              </span>
-              <input
-                type="time"
-                value={exactTimeInput}
-                onChange={(e) => setExactTimeInput(e.target.value)}
-                className={`rounded-xl px-2.5 py-1.5 text-xs font-mono ${inputClass}`}
-              />
+              {/* PUBLISH / HIDE RESULTS TOGGLE BUTTON */}
               <button
                 type="button"
-                onClick={() => handleSetExactClockTime(exactTimeInput)}
-                className="px-3 py-1.5 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 transition-all cursor-pointer shadow-sm"
+                onClick={handleTogglePublishResults}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-2 shadow-md ${
+                  resultsPublished
+                    ? 'bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/40 shadow-amber-950/20'
+                    : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-900/30'
+                }`}
+                title={
+                  resultsPublished
+                    ? 'Hide results and return students to waiting screen'
+                    : 'Publish final scores and detailed 20-question answer review to all students'
+                }
               >
-                Schedule Start Time
+                {resultsPublished ? (
+                  <>
+                    <EyeOff size={14} />
+                    <span>Hide Results (Published)</span>
+                  </>
+                ) : (
+                  <>
+                    <Eye size={14} />
+                    <span>Publish Results to All Candidates</span>
+                  </>
+                )}
               </button>
-
-              {/* Quick Preset Times */}
-              <div className="flex items-center gap-1 ml-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setExactTimeInput('10:00');
-                    handleSetExactClockTime('10:00');
-                  }}
-                  className={`px-2 py-1 rounded-lg text-[11px] font-mono border transition-all cursor-pointer ${buttonSecondary}`}
-                  title="Schedule quiz start at 10:00 AM"
-                >
-                  10:00 AM
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setExactTimeInput('10:30');
-                    handleSetExactClockTime('10:30');
-                  }}
-                  className={`px-2 py-1 rounded-lg text-[11px] font-mono border transition-all cursor-pointer ${buttonSecondary}`}
-                  title="Schedule quiz start at 10:30 AM"
-                >
-                  10:30 AM
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setExactTimeInput('11:00');
-                    handleSetExactClockTime('11:00');
-                  }}
-                  className={`px-2 py-1 rounded-lg text-[11px] font-mono border transition-all cursor-pointer ${buttonSecondary}`}
-                  title="Schedule quiz start at 11:00 AM"
-                >
-                  11:00 AM
-                </button>
-              </div>
-            </div>
-
-            {/* Quick Relative Minutes Buttons */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-xs text-slate-400 mr-1">Quick Minutes:</span>
-              <button
-                type="button"
-                onClick={() => handleSetScheduleMinutes(1)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all cursor-pointer ${buttonSecondary}`}
-                title="Schedule start in 1 minute"
-              >
-                +1m
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSetScheduleMinutes(2)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all cursor-pointer ${buttonSecondary}`}
-                title="Schedule start in 2 minutes"
-              >
-                +2m
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSetScheduleMinutes(5)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all cursor-pointer ${buttonSecondary}`}
-                title="Schedule start in 5 minutes"
-              >
-                +5m
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSetScheduleMinutes(10)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all cursor-pointer ${buttonSecondary}`}
-                title="Schedule start in 10 minutes"
-              >
-                +10m
-              </button>
-
-              {/* Custom input */}
-              <div className="flex items-center gap-1 ml-1">
-                <input
-                  type="number"
-                  min="1"
-                  max="120"
-                  value={customStartMinutes}
-                  onChange={(e) => setCustomStartMinutes(e.target.value)}
-                  className={`w-14 rounded-lg px-2 py-1 text-xs text-center font-mono ${inputClass}`}
-                  placeholder="Mins"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const m = parseInt(customStartMinutes, 10);
-                    if (!isNaN(m) && m > 0) handleSetScheduleMinutes(m);
-                  }}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium border transition-all cursor-pointer ${buttonSecondary}`}
-                >
-                  Set
-                </button>
-              </div>
             </div>
           </div>
         </div>
@@ -1465,7 +1454,10 @@ export default function AdminDashboard({
                                   </span>
                                   <button
                                     type="button"
-                                    onClick={() => handleCopyPasscode(candidatePasscode)}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleCopyPasscode(candidatePasscode);
+                                    }}
                                     className="text-[10px] px-2 py-0.5 rounded border border-slate-700/60 hover:bg-slate-800 text-slate-300 flex items-center gap-1 cursor-pointer transition-colors"
                                     title="Copy passcode for candidate"
                                   >
@@ -1524,33 +1516,56 @@ export default function AdminDashboard({
                             </div>
                           </div>
 
-                          {/* Admin Re-round / Reset Button */}
-                          {(() => {
-                            const matchedPasscodeEntry = Object.values(PREDEFINED_PASSCODES).find(
-                              (p) => p.email.toLowerCase() === student.email.toLowerCase()
-                            );
-                            const candidatePasscode =
-                              student.passcode ||
-                              (student as any).registration_code ||
-                              matchedPasscodeEntry?.passcode ||
-                              'SPARK26002';
+                          {/* Candidate Inspection & Re-round Action Buttons */}
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const sub = getCandidateSubmissionData(student);
+                                setInspectingCandidate({ candidate: student, submission: sub });
+                              }}
+                              className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+                                isLight
+                                  ? 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200'
+                                  : 'bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 border-blue-500/30'
+                              }`}
+                              title="Inspect answers & audit report for this candidate"
+                            >
+                              <FileText size={12} />
+                              <span className="hidden sm:inline">Inspect Answers</span>
+                            </button>
 
-                            return (
-                              <button
-                                type="button"
-                                onClick={() => handleResetStudent(student.email, candidatePasscode)}
-                                className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
-                                  isLight
-                                    ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
-                                    : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border-rose-500/30'
-                                }`}
-                                title="Reset candidate session: unlocks passcode & allows re-attempt with shuffled questions"
-                              >
-                                <RotateCcw size={12} />
-                                <span className="hidden sm:inline">Re-round</span>
-                              </button>
-                            );
-                          })()}
+                            {(() => {
+                              const matchedPasscodeEntry = Object.values(PREDEFINED_PASSCODES).find(
+                                (p) => p.email.toLowerCase() === student.email.toLowerCase()
+                              );
+                              const candidatePasscode =
+                                student.passcode ||
+                                (student as any).registration_code ||
+                                matchedPasscodeEntry?.passcode ||
+                                'SPARK26002';
+
+                              return (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleResetStudent(student.email, candidatePasscode);
+                                  }}
+                                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+                                    isLight
+                                      ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                                      : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border-rose-500/30'
+                                  }`}
+                                  title="Reset candidate session: unlocks passcode & allows re-attempt"
+                                >
+                                  <RotateCcw size={12} />
+                                  <span className="hidden sm:inline">Re-round</span>
+                                </button>
+                              );
+                            })()}
+                          </div>
                         </div>
                       </motion.div>
                     );
@@ -1944,6 +1959,328 @@ export default function AdminDashboard({
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Candidate Assessment Audit & Answer Breakdown Modal Popup */}
+        {inspectingCandidate && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 bg-slate-950/80 backdrop-blur-md overflow-y-auto"
+            onClick={() => setInspectingCandidate(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              onClick={(e) => e.stopPropagation()}
+              className={`w-full max-w-4xl max-h-[92vh] flex flex-col rounded-2xl shadow-2xl border overflow-hidden ${
+                isLight ? 'bg-white border-slate-200 text-slate-900' : 'bg-[#0f172a] border-slate-800 text-white'
+              }`}
+            >
+              {/* Modal Header */}
+              <div
+                className={`p-4 sm:p-5 border-b flex items-start justify-between gap-4 ${
+                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/80 border-slate-800'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <h3 className="text-base sm:text-lg font-bold">
+                      {inspectingCandidate.candidate.name}
+                    </h3>
+                    <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30 flex items-center gap-1">
+                      <KeyRound size={11} />
+                      {inspectingCandidate.candidate.passcode || 'SPARK26002'}
+                    </span>
+                    {inspectingCandidate.candidate.status === 'completed' ? (
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30 flex items-center gap-1 font-semibold">
+                        <CheckCircle2 size={11} /> Finished
+                      </span>
+                    ) : inspectingCandidate.candidate.status === 'active' ? (
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30 flex items-center gap-1 font-semibold">
+                        Taking Quiz (Q{inspectingCandidate.candidate.currentQuestion})
+                      </span>
+                    ) : inspectingCandidate.candidate.status === 'lobby' ? (
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 font-semibold">
+                        In Lobby (Ready)
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1">
+                        <UserX size={10} /> Yet to Login
+                      </span>
+                    )}
+                    {inspectingCandidate.candidate.violationsCount > 0 && (
+                      <span className="text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center gap-1">
+                        <AlertTriangle size={10} />
+                        {inspectingCandidate.candidate.violationsCount} Flag(s)
+                      </span>
+                    )}
+                  </div>
+                  <div className={`text-xs ${textMuted} flex flex-wrap items-center gap-2`}>
+                    <span>{inspectingCandidate.candidate.college}</span>
+                    <span>•</span>
+                    <span className="font-mono">{inspectingCandidate.candidate.email}</span>
+                  </div>
+                  {/* Team roster details if team */}
+                  {inspectingCandidate.candidate.members && inspectingCandidate.candidate.members.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                      <span className="text-[10px] font-mono text-slate-400">Team:</span>
+                      {inspectingCandidate.candidate.members.map((m) => (
+                        <span
+                          key={m.id || m.email}
+                          className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700/60"
+                        >
+                          {m.fullName} ({m.email})
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setInspectingCandidate(null)}
+                  className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${buttonSecondary}`}
+                  title="Close modal"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Modal Body (Scrollable) */}
+              <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+                {(() => {
+                  const sub = inspectingCandidate.submission;
+                  if (!sub) {
+                    return (
+                      <div className="text-center py-12">
+                        <FileText size={40} className="mx-auto mb-3 opacity-30 text-blue-400" />
+                        <h4 className="text-sm font-semibold mb-1">No Submission Recorded Yet</h4>
+                        <p className={`text-xs ${textMuted} max-w-sm mx-auto`}>
+                          This candidate is currently in state <strong>"{inspectingCandidate.candidate.status}"</strong>. Their detailed answer choices will appear here once they complete and submit the quiz.
+                        </p>
+                      </div>
+                    );
+                  }
+
+                  const candidateQuestions: Question[] =
+                    sub.question_snapshot && sub.question_snapshot.length > 0
+                      ? sub.question_snapshot
+                      : questions;
+
+                  const answersMap = sub.answers || {};
+                  const penalizedMap = sub.penalized_questions || {};
+
+                  let correctCount = 0;
+                  let incorrectCount = 0;
+                  let penalizedCount = 0;
+
+                  candidateQuestions.forEach((q, idx) => {
+                    const ans = answersMap[idx];
+                    const isPenalized = Boolean(penalizedMap[idx]);
+                    if (isPenalized) penalizedCount += 1;
+                    if (ans !== undefined && ans === q.correctAnswer && !isPenalized) {
+                      correctCount += 1;
+                    } else if (ans !== undefined) {
+                      incorrectCount += 1;
+                    }
+                  });
+
+                  return (
+                    <>
+                      {/* Summary Score Bar */}
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className={`p-3 rounded-xl border text-center ${
+                          isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-slate-800'
+                        }`}>
+                          <div className="text-[10px] font-mono text-slate-400 uppercase">Score</div>
+                          <div className="text-xl font-mono font-bold text-emerald-400">
+                            {sub.score} <span className="text-xs text-slate-400 font-normal">/ {candidateQuestions.length} pts</span>
+                          </div>
+                        </div>
+
+                        <div className={`p-3 rounded-xl border text-center ${
+                          isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-slate-800'
+                        }`}>
+                          <div className="text-[10px] font-mono text-slate-400 uppercase">Correct</div>
+                          <div className="text-xl font-mono font-bold text-emerald-400">{correctCount}</div>
+                        </div>
+
+                        <div className={`p-3 rounded-xl border text-center ${
+                          isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-slate-800'
+                        }`}>
+                          <div className="text-[10px] font-mono text-slate-400 uppercase">Incorrect</div>
+                          <div className="text-xl font-mono font-bold text-rose-400">{incorrectCount}</div>
+                        </div>
+
+                        <div className={`p-3 rounded-xl border text-center ${
+                          isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/60 border-slate-800'
+                        }`}>
+                          <div className="text-[10px] font-mono text-slate-400 uppercase">Penalties</div>
+                          <div className={`text-xl font-mono font-bold ${penalizedCount > 0 ? 'text-amber-400' : 'text-slate-400'}`}>
+                            {penalizedCount}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Question by question list */}
+                      <div className="space-y-3.5 pt-2">
+                        <h4 className="text-xs font-mono uppercase tracking-wider text-slate-400 flex items-center gap-1.5 font-bold">
+                          <span>Answer Audit ({candidateQuestions.length} Questions)</span>
+                        </h4>
+
+                        {candidateQuestions.map((q, qIndex) => {
+                          const candidateChoice = answersMap[qIndex];
+                          const isPenalized = Boolean(penalizedMap[qIndex]);
+                          const isCorrect =
+                            candidateChoice !== undefined && candidateChoice === q.correctAnswer && !isPenalized;
+                          const isUnattempted = candidateChoice === undefined;
+
+                          return (
+                            <div
+                              key={q.id || qIndex}
+                              className={`p-4 rounded-xl border transition-all ${
+                                isPenalized
+                                  ? isLight ? 'bg-amber-50/60 border-amber-300' : 'bg-amber-950/20 border-amber-500/40'
+                                  : isCorrect
+                                  ? isLight ? 'bg-emerald-50/60 border-emerald-300' : 'bg-emerald-950/20 border-emerald-500/30'
+                                  : isUnattempted
+                                  ? isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/40 border-slate-800'
+                                  : isLight ? 'bg-rose-50/60 border-rose-300' : 'bg-rose-950/20 border-rose-500/30'
+                              }`}
+                            >
+                              <div className="flex items-start justify-between gap-3 mb-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-slate-800 border border-slate-700 text-white">
+                                    Q#{qIndex + 1}
+                                  </span>
+                                  {q.category && (
+                                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                      {q.category}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {isPenalized ? (
+                                  <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1 shrink-0">
+                                    <AlertTriangle size={11} /> Flag Penalized (-1 pt)
+                                  </span>
+                                ) : isCorrect ? (
+                                  <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1 shrink-0">
+                                    <CheckCircle2 size={11} /> Correct (+1 pt)
+                                  </span>
+                                ) : isUnattempted ? (
+                                  <span className="text-[11px] font-mono text-slate-400 px-2 py-0.5 rounded bg-slate-800 border border-slate-700 shrink-0">
+                                    Unattempted
+                                  </span>
+                                ) : (
+                                  <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 flex items-center gap-1 shrink-0">
+                                    <XCircle size={11} /> Incorrect (0 pts)
+                                  </span>
+                                )}
+                              </div>
+
+                              <p className={`text-xs sm:text-sm font-medium mb-3 leading-relaxed ${textPrimary}`}>
+                                {q.question}
+                              </p>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                                {q.options.map((opt, optIdx) => {
+                                  const isCorrectOpt = optIdx === q.correctAnswer;
+                                  const isCandidatePick = candidateChoice === optIdx;
+
+                                  let optClass = isLight
+                                    ? 'bg-white border-slate-200 text-slate-700'
+                                    : 'bg-slate-900/60 border-slate-800 text-slate-300';
+                                  let tag = null;
+
+                                  if (isCorrectOpt && isCandidatePick) {
+                                    optClass = isLight
+                                      ? 'bg-emerald-100 border-emerald-400 text-emerald-900 font-semibold'
+                                      : 'bg-emerald-500/20 border-emerald-500/60 text-emerald-200 font-semibold';
+                                    tag = (
+                                      <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-0.5 ml-auto">
+                                        <Check size={11} /> Candidate Pick (Correct)
+                                      </span>
+                                    );
+                                  } else if (isCorrectOpt) {
+                                    optClass = isLight
+                                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800 font-semibold'
+                                      : 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300 font-semibold';
+                                    tag = (
+                                      <span className="text-[10px] font-mono text-emerald-400 flex items-center gap-0.5 ml-auto">
+                                        <Check size={11} /> Correct Answer
+                                      </span>
+                                    );
+                                  } else if (isCandidatePick) {
+                                    optClass = isLight
+                                      ? 'bg-rose-100 border-rose-400 text-rose-900 font-semibold'
+                                      : 'bg-rose-500/20 border-rose-500/60 text-rose-200 font-semibold';
+                                    tag = (
+                                      <span className="text-[10px] font-mono text-rose-400 flex items-center gap-0.5 ml-auto">
+                                        <X size={11} /> Candidate Pick (Wrong)
+                                      </span>
+                                    );
+                                  }
+
+                                  return (
+                                    <div
+                                      key={optIdx}
+                                      className={`p-2.5 rounded-lg border flex items-center gap-2 ${optClass}`}
+                                    >
+                                      <span className="w-5 h-5 rounded-md bg-black/10 dark:bg-white/10 flex items-center justify-center font-mono text-[10px] shrink-0 font-bold">
+                                        {String.fromCharCode(65 + optIdx)}
+                                      </span>
+                                      <span className="flex-1 leading-snug">{opt}</span>
+                                      {tag}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+
+              {/* Modal Footer */}
+              <div
+                className={`p-3.5 sm:p-4 border-t flex items-center justify-between gap-3 ${
+                  isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-900/80 border-slate-800'
+                }`}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleResetStudent(
+                      inspectingCandidate.candidate.email,
+                      inspectingCandidate.candidate.passcode
+                    );
+                    setInspectingCandidate(null);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-medium cursor-pointer flex items-center gap-1.5 ${
+                    isLight
+                      ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                      : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border-rose-500/30'
+                  }`}
+                  title="Grant re-round to this candidate"
+                >
+                  <RotateCcw size={13} />
+                  <span>Allow Re-round</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setInspectingCandidate(null)}
+                  className={`px-4 py-1.5 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${buttonSecondary}`}
+                >
+                  Close Audit
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

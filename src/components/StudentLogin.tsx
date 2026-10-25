@@ -106,12 +106,17 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
   };
 
   return (
-    <div className="w-full max-w-md mx-auto px-2.5 sm:px-4">
+    <div className="w-full max-w-md mx-auto px-2.5 sm:px-4 my-auto">
       <div className="surface-card rounded-xl sm:rounded-2xl p-4 sm:p-8 relative">
-        {/* Header */}
+        {/* Header with Official Glowing Logo */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400 mb-3">
-            <ShieldCheck size={24} />
+          <div className="relative inline-block mb-3">
+            <div className="absolute -inset-1.5 rounded-2xl bg-gradient-to-tr from-blue-600/40 via-cyan-500/30 to-purple-600/40 blur-md opacity-80 animate-pulse" />
+            <img
+              src="/sparktron_logo.png"
+              alt="SPARKTRON 2026 Logo"
+              className="relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover shadow-2xl border border-blue-400/40 mx-auto"
+            />
           </div>
           <h2 className="text-xl sm:text-2xl font-semibold tracking-tight text-white mb-1.5">
             Student Assessment Portal

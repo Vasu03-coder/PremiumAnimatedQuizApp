@@ -33,6 +33,7 @@ export interface StudentProfile {
   team_name?: string;
   members?: TeamMember[];
   sessionId?: string;
+  is_already_completed?: boolean;
 }
 
 export type QuizSessionState = 'lobby' | 'countdown' | 'in_progress';
@@ -47,6 +48,8 @@ export interface QuizScheduleConfig {
   durationMinutes?: number;
   message?: string;
   startedAt?: string | null;
+  reRoundPasscodes?: string[];
+  reRoundEmails?: string[];
 }
 
 export interface ProctoringViolation {
@@ -91,4 +94,5 @@ export interface QuizSubmission {
   answers: Record<number, number>;
   penalized_questions: Record<number, boolean>;
   completed_at: string;
+  question_snapshot?: Question[];
 }
