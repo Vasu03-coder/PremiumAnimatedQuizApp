@@ -54,6 +54,7 @@ import {
   broadcastResultsPublishState,
   type QuizSchedulePayload,
 } from '../../lib/supabase';
+import { SPARKTRON_LOGO_DATA_URL } from '../../assets/logo';
 
 interface AdminDashboardProps {
   questions: Question[];
@@ -842,7 +843,7 @@ export default function AdminDashboard({
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <img
-              src="/sparktron_logo.png"
+              src={SPARKTRON_LOGO_DATA_URL}
               alt="SPARKTRON 2026 Logo"
               className="w-11 h-11 rounded-xl object-cover shadow-md shadow-blue-500/20 border border-blue-500/30 shrink-0"
             />

@@ -22,6 +22,7 @@ import {
   getCandidateSubmission,
   clearStudentCompleted,
 } from './lib/supabase';
+import { SPARKTRON_LOGO_DATA_URL } from './assets/logo';
 
 type AppRoute = 'student_login' | 'quiz_session' | 'quiz_result' | 'admin_login' | 'admin_dashboard' | 'not_found';
 
@@ -429,7 +430,7 @@ export default function App() {
           <div className="max-w-6xl mx-auto px-3.5 sm:px-6 h-13 sm:h-14 flex items-center justify-between">
             <div className="flex items-center gap-2.5 sm:gap-3">
               <img
-                src="/sparktron_logo.png"
+                src={SPARKTRON_LOGO_DATA_URL}
                 alt="SPARKTRON 2026 Logo"
                 className="w-8 h-8 rounded-lg object-cover shadow-md shadow-blue-500/20 border border-blue-500/30 shrink-0"
               />
