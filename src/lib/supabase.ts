@@ -85,6 +85,46 @@ export const PREDEFINED_PASSCODES: Record<string, CandidatePasscodeMapping> = {
     department: 'ECE',
     isDemo: false,
   },
+  'SPARK-ECE-106': {
+    passcode: 'SPARK-ECE-106',
+    email: 'vignesh.s@symposium.edu',
+    fullName: 'Vignesh S',
+    college: 'Anna University, CEG',
+    department: 'ECE',
+    isDemo: false,
+  },
+  'SPARK-ECE-107': {
+    passcode: 'SPARK-ECE-107',
+    email: 'divya.b@symposium.edu',
+    fullName: 'Divya Bharathi',
+    college: 'SSN College of Engineering',
+    department: 'ECE',
+    isDemo: false,
+  },
+  'SPARK-ECE-108': {
+    passcode: 'SPARK-ECE-108',
+    email: 'manoj.k@symposium.edu',
+    fullName: 'Manoj Kumar',
+    college: 'National Institute of Tech (NIT)',
+    department: 'ECE',
+    isDemo: false,
+  },
+  'SPARK-ECE-109': {
+    passcode: 'SPARK-ECE-109',
+    email: 'ananya.r@symposium.edu',
+    fullName: 'Ananya R',
+    college: 'SRM Institute of Science & Tech',
+    department: 'ECE',
+    isDemo: false,
+  },
+  'SPARK-ECE-110': {
+    passcode: 'SPARK-ECE-110',
+    email: 'praveen.r@symposium.edu',
+    fullName: 'Praveen Raj',
+    college: 'Kumaraguru College of Tech',
+    department: 'ECE',
+    isDemo: false,
+  },
 };
 
 /**
@@ -358,6 +398,12 @@ export async function recordQuizAttempt(submission: QuizSubmission) {
   }
 }
 
+// Cross-tab direct synchronization channel (0ms latency between tabs on same browser/machine)
+export const syncBroadcastChannel =
+  typeof window !== 'undefined' && 'BroadcastChannel' in window
+    ? new BroadcastChannel('spark-quiz-arena-sync')
+    : null;
+
 /**
  * Safe broadcast event helper that reuses or creates the channel safely
  */
@@ -375,6 +421,11 @@ export function getOrCreateArenaChannel() {
 }
 
 export function broadcastStudentJoined(status: LiveStudentStatus) {
+  if (syncBroadcastChannel) {
+    try {
+      syncBroadcastChannel.postMessage({ type: 'student_joined', payload: status });
+    } catch (e) {}
+  }
   const ch = getOrCreateArenaChannel();
   return ch.send({
     type: 'broadcast',
@@ -384,6 +435,11 @@ export function broadcastStudentJoined(status: LiveStudentStatus) {
 }
 
 export function broadcastScoreUpdate(status: Partial<LiveStudentStatus> & { studentId: string }) {
+  if (syncBroadcastChannel) {
+    try {
+      syncBroadcastChannel.postMessage({ type: 'score_update', payload: status });
+    } catch (e) {}
+  }
   const ch = getOrCreateArenaChannel();
   return ch.send({
     type: 'broadcast',
@@ -393,6 +449,11 @@ export function broadcastScoreUpdate(status: Partial<LiveStudentStatus> & { stud
 }
 
 export function broadcastProctoringAlert(violation: ProctoringViolation) {
+  if (syncBroadcastChannel) {
+    try {
+      syncBroadcastChannel.postMessage({ type: 'proctoring_alert', payload: violation });
+    } catch (e) {}
+  }
   const ch = getOrCreateArenaChannel();
   return ch.send({
     type: 'broadcast',
@@ -402,6 +463,16 @@ export function broadcastProctoringAlert(violation: ProctoringViolation) {
 }
 
 export function broadcastQuizCompleted(submission: QuizSubmission) {
+  // Mark completed in persistent storage so re-attempts are blocked
+  if (submission.participant_email) {
+    markStudentCompleted(submission.participant_email, submission.registration_id || '', submission.score);
+  }
+
+  if (syncBroadcastChannel) {
+    try {
+      syncBroadcastChannel.postMessage({ type: 'quiz_completed', payload: submission });
+    } catch (e) {}
+  }
   const ch = getOrCreateArenaChannel();
   return ch.send({
     type: 'broadcast',
@@ -411,29 +482,48 @@ export function broadcastQuizCompleted(submission: QuizSubmission) {
 }
 
 export function broadcastAdminAnnouncement(message: string) {
+  const payload = { message, timestamp: new Date().toLocaleTimeString() };
+  if (syncBroadcastChannel) {
+    try {
+      syncBroadcastChannel.postMessage({ type: 'admin_announcement', payload });
+    } catch (e) {}
+  }
   const ch = getOrCreateArenaChannel();
   return ch.send({
     type: 'broadcast',
     event: 'admin_announcement',
-    payload: { message, timestamp: new Date().toLocaleTimeString() },
+    payload,
   });
 }
 
 export function broadcastResetStudent(studentEmail: string) {
+  clearStudentCompleted(studentEmail);
+  const payload = { studentEmail: studentEmail.toLowerCase() };
+  if (syncBroadcastChannel) {
+    try {
+      syncBroadcastChannel.postMessage({ type: 'reset_student_session', payload });
+    } catch (e) {}
+  }
   const ch = getOrCreateArenaChannel();
   return ch.send({
     type: 'broadcast',
     event: 'reset_student_session',
-    payload: { studentEmail: studentEmail.toLowerCase() },
+    payload,
   });
 }
 
+export type QuizSessionState = 'lobby' | 'countdown' | 'in_progress' | 'paused';
+
 export interface QuizSchedulePayload {
-  scheduledStartTime: string | null; // ISO string when quiz starts or null for immediate
-  isQuizActive: boolean; // false when quiz is paused by admin
-  durationMinutes?: number;
+  state: QuizSessionState; // 'lobby' (waiting for admin to start), 'countdown' (10s countdown), 'in_progress', 'paused'
+  isQuizActive: boolean;
+  countdownSeconds?: number;
+  countdownEndTime?: string | null; // ISO string when countdown finishes
+  scheduledStartTime?: string | null; // ISO string when quiz starts or null
   targetClockTime?: string; // e.g. "10:00 AM"
+  durationMinutes?: number;
   message?: string;
+  startedAt?: string | null;
 }
 
 export function broadcastQuizSchedule(payload: QuizSchedulePayload) {
@@ -443,6 +533,12 @@ export function broadcastQuizSchedule(payload: QuizSchedulePayload) {
       window.dispatchEvent(new CustomEvent('spark_quiz_schedule_change', { detail: payload }));
     }
   } catch (e) {}
+
+  if (syncBroadcastChannel) {
+    try {
+      syncBroadcastChannel.postMessage({ type: 'quiz_schedule_update', payload });
+    } catch (e) {}
+  }
 
   const ch = getOrCreateArenaChannel();
   return ch.send({
@@ -457,21 +553,38 @@ export function getQuizSchedule(): QuizSchedulePayload {
     const saved = localStorage.getItem('spark_quiz_schedule');
     if (saved) {
       const parsed = JSON.parse(saved);
+      // Ensure state exists
+      if (!parsed.state) {
+        parsed.state = parsed.isQuizActive ? 'in_progress' : 'lobby';
+      }
       return parsed;
     }
   } catch (e) {}
-  return { scheduledStartTime: null, isQuizActive: true };
+  // Default is 'lobby' (Waiting for Admin to click Start Quiz)
+  return {
+    state: 'lobby',
+    isQuizActive: false,
+    scheduledStartTime: null,
+    countdownSeconds: 10,
+    message: 'Waiting for Admin to start the quiz...',
+  };
 }
 
 export function broadcastQuizStatus(isQuizActive: boolean) {
-  // Also update schedule status
   const current = getQuizSchedule();
   const updated: QuizSchedulePayload = {
     ...current,
+    state: isQuizActive ? 'in_progress' : 'paused',
     isQuizActive,
     message: isQuizActive ? 'Quiz resumed by Administrator' : 'Quiz paused by Administrator',
   };
   broadcastQuizSchedule(updated);
+
+  if (syncBroadcastChannel) {
+    try {
+      syncBroadcastChannel.postMessage({ type: 'quiz_status_change', payload: { isQuizActive } });
+    } catch (e) {}
+  }
 
   const ch = getOrCreateArenaChannel();
   return ch.send({
@@ -479,6 +592,89 @@ export function broadcastQuizStatus(isQuizActive: boolean) {
     event: 'quiz_status_change',
     payload: { isQuizActive },
   });
+}
+
+/**
+ * Check if a candidate has already completed the assessment
+ * Blocks unauthorized second attempts
+ */
+export function isStudentCompleted(
+  email: string,
+  passcode?: string
+): { completed: boolean; score?: number; completedAt?: string } {
+  try {
+    const cleanEmail = (email || '').toLowerCase().trim();
+    const cleanPasscode = (passcode || '').toUpperCase().trim();
+
+    // Check completion map
+    const mapStr = localStorage.getItem('spark_completed_candidates');
+    if (mapStr) {
+      const map = JSON.parse(mapStr);
+      if (cleanEmail && map[cleanEmail]) {
+        return { completed: true, score: map[cleanEmail].score, completedAt: map[cleanEmail].completedAt };
+      }
+      if (cleanPasscode && map[cleanPasscode]) {
+        return { completed: true, score: map[cleanPasscode].score, completedAt: map[cleanPasscode].completedAt };
+      }
+    }
+
+    // Check submissions history
+    const subStr = localStorage.getItem('spark_quiz_submissions');
+    if (subStr) {
+      const subs: QuizSubmission[] = JSON.parse(subStr);
+      const found = subs.find(
+        (s) =>
+          (s.participant_email && s.participant_email.toLowerCase().trim() === cleanEmail) ||
+          (cleanPasscode && s.registration_id && s.registration_id.toUpperCase().includes(cleanPasscode))
+      );
+      if (found) {
+        return { completed: true, score: found.score, completedAt: found.completed_at };
+      }
+    }
+  } catch (e) {}
+  return { completed: false };
+}
+
+/**
+ * Mark student as completed so subsequent login attempts are rejected
+ */
+export function markStudentCompleted(email: string, passcode: string, score: number) {
+  try {
+    const cleanEmail = (email || '').toLowerCase().trim();
+    const cleanPasscode = (passcode || '').toUpperCase().trim();
+    const map = JSON.parse(localStorage.getItem('spark_completed_candidates') || '{}');
+    const record = { completed: true, score, completedAt: new Date().toISOString(), email: cleanEmail, passcode: cleanPasscode };
+    if (cleanEmail) map[cleanEmail] = record;
+    if (cleanPasscode) map[cleanPasscode] = record;
+    localStorage.setItem('spark_completed_candidates', JSON.stringify(map));
+  } catch (e) {}
+}
+
+/**
+ * Clear student completion lock (Admin "Reset / Allow Re-attempt" feature)
+ */
+export function clearStudentCompleted(email: string, passcode?: string) {
+  try {
+    const cleanEmail = (email || '').toLowerCase().trim();
+    const cleanPasscode = (passcode || '').toUpperCase().trim();
+
+    const map = JSON.parse(localStorage.getItem('spark_completed_candidates') || '{}');
+    if (cleanEmail) delete map[cleanEmail];
+    if (cleanPasscode) delete map[cleanPasscode];
+    localStorage.setItem('spark_completed_candidates', JSON.stringify(map));
+
+    // Also remove from submissions
+    const subStr = localStorage.getItem('spark_quiz_submissions');
+    if (subStr) {
+      const subs: QuizSubmission[] = JSON.parse(subStr);
+      const filtered = subs.filter(
+        (s) =>
+          s.participant_email?.toLowerCase().trim() !== cleanEmail &&
+          (!cleanPasscode || !s.registration_id?.toUpperCase().includes(cleanPasscode))
+      );
+      localStorage.setItem('spark_quiz_submissions', JSON.stringify(filtered));
+    }
+  } catch (e) {}
 }
 
 /**

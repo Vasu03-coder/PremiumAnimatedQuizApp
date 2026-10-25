@@ -43,6 +43,8 @@ import {
   broadcastQuizStatus,
   broadcastQuizSchedule,
   getQuizSchedule,
+  syncBroadcastChannel,
+  clearStudentCompleted,
   PREDEFINED_PASSCODES,
   type QuizSchedulePayload,
 } from '../../lib/supabase';
@@ -122,7 +124,7 @@ export default function AdminDashboard({
 
   // Search & Filter State for candidates
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'completed' | 'offline'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'lobby' | 'active' | 'completed' | 'offline'>('all');
 
   // Admin Broadcast Announcement State
   const [announcementText, setAnnouncementText] = useState('');
@@ -176,6 +178,7 @@ export default function AdminDashboard({
     const formattedTime = targetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
 
     const payload: QuizSchedulePayload = {
+      state: 'countdown',
       scheduledStartTime: targetDate.toISOString(),
       isQuizActive: true,
       targetClockTime: formattedTime,
@@ -190,6 +193,7 @@ export default function AdminDashboard({
     const targetDate = new Date(Date.now() + mins * 60 * 1000);
     const formattedTime = targetDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
     const payload: QuizSchedulePayload = {
+      state: 'countdown',
       scheduledStartTime: targetDate.toISOString(),
       isQuizActive: true,
       targetClockTime: formattedTime,
@@ -201,10 +205,28 @@ export default function AdminDashboard({
     showToast(`⏱️ Start timer set: Quiz will unlock at ${formattedTime} (+${mins}m)!`);
   };
 
+  // 10-Second Synchronized Countdown Start (Host Assessment Start)
+  const handleStartCountdown = (seconds: number = 10) => {
+    const countdownEndTime = new Date(Date.now() + seconds * 1000).toISOString();
+    const payload: QuizSchedulePayload = {
+      state: 'countdown',
+      isQuizActive: true,
+      countdownSeconds: seconds,
+      countdownEndTime,
+      scheduledStartTime: null,
+      message: `Quiz countdown started (${seconds}s remaining)`,
+    };
+    setSchedule(payload);
+    broadcastQuizSchedule(payload);
+    showToast(`⏱️ ${seconds}-Second synchronized countdown started! Questions will unlock for all candidates.`);
+  };
+
   const handleStartImmediately = () => {
     const payload: QuizSchedulePayload = {
+      state: 'in_progress',
       scheduledStartTime: null,
       isQuizActive: true,
+      startedAt: new Date().toISOString(),
       targetClockTime: undefined,
       message: 'Quiz started immediately by Administrator!',
     };
@@ -213,9 +235,27 @@ export default function AdminDashboard({
     showToast('🚀 Quiz launched immediately! All candidate waiting rooms unlocked.');
   };
 
+  const handleResetToLobby = () => {
+    if (!window.confirm('Return entire session to Waiting Lobby? Candidates will wait until you start again.')) {
+      return;
+    }
+    const payload: QuizSchedulePayload = {
+      state: 'lobby',
+      isQuizActive: false,
+      scheduledStartTime: null,
+      countdownSeconds: 10,
+      countdownEndTime: null,
+      message: 'Session returned to Waiting Lobby by Administrator.',
+    };
+    setSchedule(payload);
+    broadcastQuizSchedule(payload);
+    showToast('🔄 Session returned to Waiting Lobby.');
+  };
+
   const handlePauseQuiz = () => {
     const payload: QuizSchedulePayload = {
       ...schedule,
+      state: 'paused',
       isQuizActive: false,
       message: 'Quiz has been paused by Administrator.',
     };
@@ -227,6 +267,7 @@ export default function AdminDashboard({
   const handleResumeQuiz = () => {
     const payload: QuizSchedulePayload = {
       ...schedule,
+      state: 'in_progress',
       isQuizActive: true,
       message: 'Quiz session resumed by Administrator.',
     };
@@ -314,8 +355,81 @@ export default function AdminDashboard({
     loadQuizParticipants();
   }, [questions.length]);
 
-  // Supabase Realtime Listener (Safe subscription without duplicate joins)
+  // Supabase Realtime & Cross-Tab BroadcastChannel Listener
   useEffect(() => {
+    // 1. Cross-tab BroadcastChannel for 0ms latency between tabs on same machine
+    if (syncBroadcastChannel) {
+      const handleBroadcast = (e: MessageEvent) => {
+        const data = e.data;
+        if (!data) return;
+
+        if (data.type === 'student_joined' && data.payload?.email) {
+          const payload = data.payload;
+          const key = payload.email.toLowerCase();
+          setStudents((prev) => {
+            const existing = prev[key] || {
+              studentId: payload.studentId || key,
+              name: payload.name || 'Candidate',
+              email: payload.email,
+              college: payload.college || 'Engineering College',
+              totalQuestions: payload.totalQuestions || questions.length,
+              score: 0,
+              violationsCount: 0,
+            };
+            return {
+              ...prev,
+              [key]: {
+                ...existing,
+                ...payload,
+                status: payload.status || 'lobby',
+                lastSeen: new Date().toISOString(),
+              },
+            };
+          });
+        } else if (data.type === 'score_update' && data.payload?.email) {
+          const payload = data.payload;
+          const key = payload.email.toLowerCase();
+          setStudents((prev) => {
+            if (!prev[key]) return prev;
+            return {
+              ...prev,
+              [key]: {
+                ...prev[key],
+                score: payload.score ?? prev[key].score,
+                currentQuestion: payload.currentQuestion ?? prev[key].currentQuestion,
+                violationsCount: payload.violationsCount ?? prev[key].violationsCount,
+                status: 'active',
+                lastSeen: new Date().toISOString(),
+              },
+            };
+          });
+        } else if (data.type === 'proctoring_alert' && data.payload) {
+          setViolations((prev) => [data.payload, ...prev]);
+        } else if (data.type === 'quiz_completed' && data.payload?.participant_email) {
+          const payload = data.payload;
+          const key = payload.participant_email.toLowerCase();
+          setStudents((prev) => {
+            if (!prev[key]) return prev;
+            return {
+              ...prev,
+              [key]: {
+                ...prev[key],
+                score: payload.score ?? prev[key].score,
+                currentQuestion: payload.total_questions || questions.length,
+                violationsCount: payload.violations_count ?? prev[key].violationsCount,
+                status: 'completed',
+                completedAt: payload.completed_at || new Date().toISOString(),
+              },
+            };
+          });
+        } else if (data.type === 'quiz_schedule_update' && data.payload) {
+          setSchedule(data.payload);
+        }
+      };
+      syncBroadcastChannel.addEventListener('message', handleBroadcast);
+    }
+
+    // 2. Supabase Realtime channel
     const unsubscribe = subscribeToQuizArena({
       onStudentJoined: (payload) => {
         if (!payload || !payload.email) return;
@@ -335,7 +449,7 @@ export default function AdminDashboard({
             [key]: {
               ...existing,
               ...payload,
-              status: 'active',
+              status: payload.status || 'lobby',
               lastSeen: new Date().toISOString(),
             },
           };
@@ -422,17 +536,19 @@ export default function AdminDashboard({
       return true;
     })
     .sort((a, b) => {
-      const statusOrder: Record<string, number> = { active: 1, completed: 2, flagged: 3, offline: 4 };
-      const aOrder = statusOrder[a.status] || 5;
-      const bOrder = statusOrder[b.status] || 5;
+      const statusOrder: Record<string, number> = { lobby: 1, active: 2, completed: 3, flagged: 4, offline: 5 };
+      const aOrder = statusOrder[a.status] || 6;
+      const bOrder = statusOrder[b.status] || 6;
       if (b.score !== a.score) return b.score - a.score;
       if (aOrder !== bOrder) return aOrder - bOrder;
       return a.name.localeCompare(b.name);
     });
 
   const totalEligible = Object.keys(students).length;
+  const lobbyCount = Object.values(students).filter((s) => s.status === 'lobby').length;
   const activeCount = Object.values(students).filter((s) => s.status === 'active').length;
   const completedCount = Object.values(students).filter((s) => s.status === 'completed').length;
+  const offlineCount = Object.values(students).filter((s) => s.status === 'offline').length;
 
   // CSV Export
   const handleExportCSV = () => {
@@ -459,13 +575,24 @@ export default function AdminDashboard({
     document.body.removeChild(link);
   };
 
-  // Reset Student Attempt (Admin Control)
+  // Reset Student Attempt (Admin Control for Re-attempt / Re-round)
   const handleResetStudent = (studentEmail: string) => {
-    if (!window.confirm(`Reset test session for ${studentEmail}? The student can retake the quiz.`)) {
+    const key = studentEmail.toLowerCase();
+    const candidate = students[key];
+    const candidateName = candidate?.name || studentEmail;
+
+    if (
+      !window.confirm(
+        `Grant Re-attempt for ${candidateName} (${studentEmail})?\n\nTheir previous attempt lock will be cleared, previous score reset, and they will be allowed to log in fresh with newly shuffled questions.`
+      )
+    ) {
       return;
     }
 
-    const key = studentEmail.toLowerCase();
+    // 1. Remove from completed map and saved submissions
+    clearStudentCompleted(studentEmail);
+
+    // 2. Reset in live memory
     setStudents((prev) => {
       if (!prev[key]) return prev;
       return {
@@ -481,20 +608,9 @@ export default function AdminDashboard({
       };
     });
 
-    // Remove from local storage submissions
-    try {
-      const existing: QuizSubmission[] = JSON.parse(
-        localStorage.getItem('spark_quiz_submissions') || '[]'
-      );
-      const filtered = existing.filter((sub) => sub.participant_email.toLowerCase() !== key);
-      localStorage.setItem('spark_quiz_submissions', JSON.stringify(filtered));
-    } catch (e) {
-      console.error(e);
-    }
-
-    // Broadcast reset event so if student has page open, it resets
+    // 3. Broadcast reset event across network and cross-tab sync channel
     broadcastResetStudent(studentEmail);
-    showToast(`Session reset for ${studentEmail}. Candidate can now re-test.`);
+    showToast(`🔄 Re-attempt unlocked for ${candidateName}! Candidate can now log in fresh.`);
   };
 
   // Toggle Quiz Lock (Admin Control)
@@ -719,100 +835,109 @@ export default function AdminDashboard({
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4 mb-6">
           <div className={`${cardClass} rounded-xl p-4 transition-colors duration-200`}>
             <div className="flex items-center justify-between text-xs font-mono mb-1.5 text-slate-400">
-              <span className="uppercase tracking-wider">Eligible Candidates</span>
+              <span className="uppercase tracking-wider">Registered</span>
               <Users size={15} className={isLight ? 'text-blue-600' : 'text-blue-400'} />
             </div>
             <div className={`text-2xl sm:text-3xl font-bold font-mono ${textPrimary}`}>
               {totalEligible}
             </div>
             <div className="text-[11px] text-slate-400 mt-1 font-mono">
-              Only Technical Quiz confirmed
+              Total assigned candidates
             </div>
           </div>
 
           <div className={`${cardClass} rounded-xl p-4 transition-colors duration-200`}>
             <div className="flex items-center justify-between text-xs font-mono mb-1.5 text-slate-400">
-              <span className="uppercase tracking-wider">Online Right Now</span>
-              <Radio size={15} className={activeCount > 0 ? 'text-emerald-500 animate-pulse' : 'text-slate-400'} />
+              <span className="uppercase tracking-wider">Ready in Lobby</span>
+              <Radio size={15} className={lobbyCount > 0 ? 'text-emerald-400 animate-pulse' : 'text-slate-400'} />
             </div>
             <div className={`text-2xl sm:text-3xl font-bold font-mono ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
+              {lobbyCount}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-1 font-mono">
+              {lobbyCount === 0 ? 'Waiting for candidates to log in' : 'Connected & ready to start'}
+            </div>
+          </div>
+
+          <div className={`${cardClass} rounded-xl p-4 transition-colors duration-200`}>
+            <div className="flex items-center justify-between text-xs font-mono mb-1.5 text-slate-400">
+              <span className="uppercase tracking-wider">Taking Quiz Live</span>
+              <Sparkles size={15} className={activeCount > 0 ? 'text-blue-400 animate-spin' : 'text-slate-400'} />
+            </div>
+            <div className={`text-2xl sm:text-3xl font-bold font-mono ${isLight ? 'text-blue-600' : 'text-blue-400'}`}>
               {activeCount}
             </div>
             <div className="text-[11px] text-slate-400 mt-1 font-mono">
-              {activeCount === 0 ? 'No candidates logged in currently' : 'Taking quiz live'}
+              {activeCount === 0 ? 'Quiz not yet underway' : 'Answering questions live'}
             </div>
           </div>
 
           <div className={`${cardClass} rounded-xl p-4 transition-colors duration-200`}>
             <div className="flex items-center justify-between text-xs font-mono mb-1.5 text-slate-400">
               <span className="uppercase tracking-wider">Completed Test</span>
-              <CheckCircle2 size={15} className={isLight ? 'text-blue-600' : 'text-blue-400'} />
+              <CheckCircle2 size={15} className={isLight ? 'text-purple-600' : 'text-purple-400'} />
             </div>
-            <div className={`text-2xl sm:text-3xl font-bold font-mono ${isLight ? 'text-blue-600' : 'text-blue-400'}`}>
+            <div className={`text-2xl sm:text-3xl font-bold font-mono ${isLight ? 'text-purple-600' : 'text-purple-400'}`}>
               {completedCount}
             </div>
             <div className="text-[11px] text-slate-400 mt-1 font-mono">
-              Final answers submitted
-            </div>
-          </div>
-
-          <div className={`${cardClass} rounded-xl p-4 transition-colors duration-200`}>
-            <div className="flex items-center justify-between text-xs font-mono mb-1.5 text-slate-400">
-              <span className="uppercase tracking-wider">Proctoring Alerts</span>
-              <ShieldAlert size={15} className={isLight ? 'text-amber-600' : 'text-amber-400'} />
-            </div>
-            <div className={`text-2xl sm:text-3xl font-bold font-mono ${isLight ? 'text-amber-600' : 'text-amber-400'}`}>
-              {violations.length}
-            </div>
-            <div className="text-[11px] text-slate-400 mt-1 font-mono">
-              Tab switch / screen capture logs
+              Final scores locked
             </div>
           </div>
         </div>
 
         {/* SYNCHRONIZED QUIZ START & COUNTDOWN CONTROLLER CARD */}
         <div className={`${cardClass} rounded-2xl p-5 mb-6 border transition-all ${
-          !schedule.isQuizActive
+          schedule.state === 'paused'
             ? isLight ? 'border-amber-300 bg-amber-50/60' : 'border-amber-500/40 bg-amber-950/25'
-            : schedule.scheduledStartTime && remainingStartSeconds > 0
+            : schedule.state === 'countdown'
             ? isLight ? 'border-blue-300 bg-blue-50/50' : 'border-blue-500/40 bg-blue-950/25'
-            : isLight ? 'border-emerald-200 bg-emerald-50/40' : 'border-emerald-500/30 bg-emerald-950/25'
+            : schedule.state === 'in_progress'
+            ? isLight ? 'border-emerald-200 bg-emerald-50/40' : 'border-emerald-500/30 bg-emerald-950/25'
+            : isLight ? 'border-slate-300 bg-slate-50/80' : 'border-slate-800 bg-slate-900/60'
         }`}>
           {/* Header Row: Title, Status Badge, and Live Clock */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-white/[0.08]">
             <div className="flex items-center gap-3">
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                !schedule.isQuizActive
+                schedule.state === 'paused'
                   ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
-                  : schedule.scheduledStartTime && remainingStartSeconds > 0
+                  : schedule.state === 'countdown'
                   ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30'
-                  : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                  : schedule.state === 'in_progress'
+                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
+                  : 'bg-slate-800 text-slate-300 border border-slate-700'
               }`}>
-                <Clock size={20} className={schedule.scheduledStartTime && remainingStartSeconds > 0 ? 'animate-pulse' : ''} />
+                <Clock size={20} className={schedule.state === 'countdown' ? 'animate-pulse' : ''} />
               </div>
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className={`text-base font-bold ${textPrimary}`}>
-                    Synchronized Quiz Start & Waiting Room Controller
+                    Synchronized Assessment Command Center
                   </h3>
-                  {!schedule.isQuizActive ? (
+                  {schedule.state === 'paused' ? (
                     <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold flex items-center gap-1">
                       <Lock size={10} /> QUIZ PAUSED
                     </span>
-                  ) : schedule.scheduledStartTime && remainingStartSeconds > 0 ? (
+                  ) : schedule.state === 'countdown' ? (
                     <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/40 font-semibold flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />
-                      COUNTDOWN ACTIVE
+                      10s COUNTDOWN ACTIVE
+                    </span>
+                  ) : schedule.state === 'in_progress' ? (
+                    <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-semibold flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      LIVE IN PROGRESS
                     </span>
                   ) : (
-                    <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-semibold flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                      LIVE & UNLOCKED
+                    <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-semibold flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                      WAITING IN LOBBY ({lobbyCount} READY)
                     </span>
                   )}
                 </div>
                 <p className={`text-xs ${textMuted} mt-0.5`}>
-                  All students see the synchronized start timer. Once the timer reaches 00:00, all questions unlock at the exact same moment.
+                  Candidates wait in the lobby until you click Start Quiz. Once launched with the 10-second countdown, all screens unlock simultaneously.
                 </p>
               </div>
             </div>
@@ -824,74 +949,137 @@ export default function AdminDashboard({
             </div>
           </div>
 
-          {/* Middle Row: Current Active Status Details & Primary Actions */}
+          {/* Middle Row: Current Active Status Details & Primary Host Actions */}
           <div className="py-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-white/[0.08]">
             <div>
-              {!schedule.isQuizActive ? (
+              {schedule.state === 'paused' ? (
                 <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
                   <Lock size={15} className="shrink-0" />
                   <div>
                     <span className="font-bold">Quiz Currently Paused: </span>
-                    <span>All student screens and 60s question timers are frozen. No student can proceed until you click Resume.</span>
+                    <span>All candidate screens and 60s timers are frozen. Click Resume to continue.</span>
                   </div>
                 </div>
-              ) : schedule.scheduledStartTime && remainingStartSeconds > 0 ? (
+              ) : schedule.state === 'countdown' ? (
                 <div className="flex flex-wrap items-center gap-3">
-                  <div className="text-xs text-slate-400 font-mono">
-                    Scheduled Start Time: <strong className="text-white text-sm">{schedule.targetClockTime || new Date(schedule.scheduledStartTime).toLocaleTimeString()}</strong>
+                  <div className="text-xs font-mono px-3.5 py-1.5 rounded-xl bg-blue-900/60 border border-blue-500/40 text-blue-200 font-bold flex items-center gap-2">
+                    <Timer size={16} className="text-blue-400 animate-spin" />
+                    <span>Synchronized 10s Countdown Running across all candidate terminals!</span>
                   </div>
-                  <div className="text-xs font-mono px-3 py-1 rounded-lg bg-blue-900/50 border border-blue-500/30 text-blue-200 font-bold flex items-center gap-1.5">
-                    <Timer size={14} className="text-blue-400 animate-spin" />
-                    <span>Countdown: {String(Math.floor(remainingStartSeconds / 60)).padStart(2, '0')}:{String(remainingStartSeconds % 60).padStart(2, '0')} remaining</span>
-                  </div>
+                </div>
+              ) : schedule.state === 'in_progress' ? (
+                <div className="text-xs text-emerald-400 font-mono flex items-center gap-2">
+                  <CheckCircle2 size={16} />
+                  <span>The examination is actively running across all connected terminals.</span>
                 </div>
               ) : (
-                <div className="text-xs text-emerald-400 font-mono flex items-center gap-1.5">
-                  <CheckCircle2 size={15} />
-                  <span>The quiz is currently unlocked and live for all registered candidates.</span>
+                <div className="text-xs text-slate-300 flex items-center gap-2 font-mono">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>
+                    <strong className="text-emerald-400 font-bold">{lobbyCount}</strong> of <strong className="text-white">{totalEligible}</strong> candidate(s) are logged in & ready in the lobby.
+                  </span>
                 </div>
               )}
             </div>
 
-            {/* Main Action Buttons */}
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Pause / Resume Button */}
-              {schedule.isQuizActive ? (
-                <button
-                  type="button"
-                  onClick={handlePauseQuiz}
-                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-amber-200 bg-amber-950/60 hover:bg-amber-900/60 border border-amber-500/40 shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
-                  title="Pause quiz session and freeze all candidate screens immediately"
-                >
-                  <Lock size={14} className="text-amber-400" />
-                  <span>Pause Quiz (Freeze All)</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleResumeQuiz}
-                  className="px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
-                  title="Resume quiz and unfreeze student screens"
-                >
-                  <Play size={14} fill="currentColor" />
-                  <span>Resume Quiz (Unfreeze All)</span>
-                </button>
+            {/* Primary Action Buttons */}
+            <div className="flex flex-wrap items-center gap-2.5">
+              {/* LOBBY STATE ACTIONS */}
+              {schedule.state === 'lobby' && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => handleStartCountdown(10)}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 shadow-md shadow-emerald-700/20 flex items-center gap-2 cursor-pointer transition-all"
+                    title="Start 10-second synchronized countdown for all waiting candidates"
+                  >
+                    <Play size={14} fill="currentColor" />
+                    <span>Start Quiz (10s Countdown)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleStartImmediately}
+                    className="px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-1.5 cursor-pointer transition-all"
+                    title="Unlock quiz immediately without countdown"
+                  >
+                    <Sparkles size={14} className="text-cyan-400" />
+                    <span>Instant Launch</span>
+                  </button>
+                </>
               )}
 
-              {/* Start Immediately */}
-              <button
-                type="button"
-                onClick={handleStartImmediately}
-                className={`px-3.5 py-2 rounded-xl text-xs font-semibold border flex items-center gap-1.5 transition-all cursor-pointer ${
-                  schedule.scheduledStartTime && remainingStartSeconds > 0
-                    ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-500 shadow-sm'
-                    : buttonSecondary
-                }`}
-                title="Unlock quiz immediately for all candidates"
-              >
-                <Sparkles size={14} className="text-cyan-300" />
-                <span>Launch Now (Skip Wait)</span>
-              </button>
+              {/* COUNTDOWN STATE ACTIONS */}
+              {schedule.state === 'countdown' && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleResetToLobby}
+                    className="px-3.5 py-2 rounded-xl text-xs font-semibold text-rose-300 bg-rose-950/60 hover:bg-rose-900/60 border border-rose-800/60 flex items-center gap-1.5 cursor-pointer transition-all"
+                  >
+                    <X size={14} />
+                    <span>Cancel Countdown</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleStartImmediately}
+                    className="px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 flex items-center gap-1.5 cursor-pointer transition-all"
+                  >
+                    <Sparkles size={14} />
+                    <span>Launch Instantly</span>
+                  </button>
+                </>
+              )}
+
+              {/* IN PROGRESS STATE ACTIONS */}
+              {schedule.state === 'in_progress' && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handlePauseQuiz}
+                    className="px-3.5 py-2 rounded-xl text-xs font-semibold text-amber-200 bg-amber-950/60 hover:bg-amber-900/60 border border-amber-500/40 shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+                    title="Pause quiz session and freeze all candidate screens immediately"
+                  >
+                    <Lock size={14} className="text-amber-400" />
+                    <span>Pause Quiz (Freeze All)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleResetToLobby}
+                    className="px-3 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-1.5 cursor-pointer transition-all"
+                    title="Return quiz session to waiting lobby"
+                  >
+                    <RotateCcw size={13} />
+                    <span>Return to Lobby</span>
+                  </button>
+                </>
+              )}
+
+              {/* PAUSED STATE ACTIONS */}
+              {schedule.state === 'paused' && (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleResumeQuiz}
+                    className="px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
+                    title="Resume quiz and unfreeze student screens"
+                  >
+                    <Play size={14} fill="currentColor" />
+                    <span>Resume Quiz (Unfreeze All)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleResetToLobby}
+                    className="px-3 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-1.5 cursor-pointer transition-all"
+                  >
+                    <RotateCcw size={13} />
+                    <span>Return to Lobby</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -1122,6 +1310,7 @@ export default function AdminDashboard({
                   className={`rounded-lg px-2.5 py-1.5 text-xs ${inputClass}`}
                 >
                   <option value="all">All Status</option>
+                  <option value="lobby">Ready in Lobby</option>
                   <option value="active">Online (Taking Quiz)</option>
                   <option value="completed">Completed</option>
                   <option value="offline">Yet to Login</option>
@@ -1144,26 +1333,34 @@ export default function AdminDashboard({
                 <AnimatePresence>
                   {leaderboardList.map((student, index) => {
                     const rank = index + 1;
+                    const isLobby = student.status === 'lobby';
                     const isOnline = student.status === 'active';
                     const isCompleted = student.status === 'completed';
 
                     let statusBadge = (
-                      <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200 flex items-center gap-1">
+                      <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700/60 flex items-center gap-1">
                         <UserX size={11} /> Yet to Login
                       </span>
                     );
 
-                    if (isOnline) {
+                    if (isLobby) {
                       statusBadge = (
-                        <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1 font-semibold">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1 font-semibold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                          In Lobby (Ready)
+                        </span>
+                      );
+                    } else if (isOnline) {
+                      statusBadge = (
+                        <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-blue-500/15 text-blue-400 border border-blue-500/30 flex items-center gap-1 font-semibold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
                           Taking Quiz (Q{student.currentQuestion})
                         </span>
                       );
                     } else if (isCompleted) {
                       statusBadge = (
-                        <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200 flex items-center gap-1 font-semibold">
-                          <CheckCircle2 size={11} /> Finished
+                        <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30 flex items-center gap-1 font-semibold">
+                          <CheckCircle2 size={11} className="text-purple-400" /> Finished
                         </span>
                       );
                     }
@@ -1274,15 +1471,30 @@ export default function AdminDashboard({
                         </div>
 
                         {/* Right: Score, Progress, and Reset Control */}
-                        <div className="flex items-center gap-5 w-full sm:w-auto justify-between sm:justify-end">
+                        <div className="flex items-center gap-4 sm:gap-5 w-full sm:w-auto justify-between sm:justify-end">
                           <div className="text-left sm:text-right">
                             <div className="text-[10px] font-mono text-slate-400 uppercase">Progress</div>
-                            <div className={`text-xs font-mono font-medium ${isOnline ? 'text-emerald-500' : textMuted}`}>
-                              {student.currentQuestion > 0 ? `Q ${student.currentQuestion} / ${student.totalQuestions}` : 'Not Started'}
+                            <div className="text-xs font-mono font-medium">
+                              {isLobby ? (
+                                <span className="text-emerald-400 font-semibold flex items-center gap-1 justify-start sm:justify-end">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                  Ready in Lobby
+                                </span>
+                              ) : isOnline ? (
+                                <span className="text-blue-400 font-bold">
+                                  Q {student.currentQuestion} / {student.totalQuestions || 20}
+                                </span>
+                              ) : isCompleted ? (
+                                <span className="text-purple-400 font-bold">
+                                  Completed ({student.totalQuestions || 20}/{student.totalQuestions || 20})
+                                </span>
+                              ) : (
+                                <span className={textMuted}>Not Started</span>
+                              )}
                             </div>
                           </div>
 
-                          <div className="text-right min-w-[65px]">
+                          <div className="text-right min-w-[60px]">
                             <div className="text-[10px] font-mono text-slate-400 uppercase">Score</div>
                             <div className={`text-xl font-mono font-bold ${textPrimary}`}>
                               {student.score}
@@ -1290,14 +1502,19 @@ export default function AdminDashboard({
                             </div>
                           </div>
 
-                          {/* Admin Reset Button */}
+                          {/* Admin Re-round / Reset Button */}
                           <button
                             type="button"
                             onClick={() => handleResetStudent(student.email)}
-                            className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${buttonSecondary}`}
-                            title="Reset candidate session to allow re-test"
+                            className={`px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+                              isLight
+                                ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border-rose-200'
+                                : 'bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border-rose-500/30'
+                            }`}
+                            title="Reset candidate session: unlocks passcode & allows re-attempt with shuffled questions"
                           >
-                            <RotateCcw size={14} />
+                            <RotateCcw size={12} />
+                            <span className="hidden sm:inline">Re-round</span>
                           </button>
                         </div>
                       </motion.div>

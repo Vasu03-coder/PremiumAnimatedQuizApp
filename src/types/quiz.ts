@@ -21,11 +21,18 @@ export interface StudentProfile {
   is_demo?: boolean;
 }
 
+export type QuizSessionState = 'lobby' | 'countdown' | 'in_progress' | 'paused';
+
 export interface QuizScheduleConfig {
-  scheduledStartTime: string | null; // ISO timestamp or null if started
+  state: QuizSessionState;
   isQuizActive: boolean;
+  countdownSeconds?: number;
+  countdownEndTime?: string | null;
+  scheduledStartTime?: string | null;
+  targetClockTime?: string;
   durationMinutes?: number;
   message?: string;
+  startedAt?: string | null;
 }
 
 export interface ProctoringViolation {
@@ -47,7 +54,7 @@ export interface LiveStudentStatus {
   totalQuestions: number;
   score: number;
   violationsCount: number;
-  status: 'active' | 'completed' | 'flagged' | 'offline';
+  status: 'lobby' | 'active' | 'completed' | 'flagged' | 'offline';
   lastSeen: string;
   completedAt?: string;
   isOnline?: boolean;

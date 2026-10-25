@@ -15,6 +15,9 @@ import {
   broadcastQuizCompleted,
   recordQuizAttempt,
   syncQuestionsWithCloud,
+  getQuizSchedule,
+  syncBroadcastChannel,
+  getOrCreateArenaChannel,
 } from './lib/supabase';
 
 type AppRoute = 'student_login' | 'quiz_session' | 'quiz_result' | 'admin_login' | 'admin_dashboard' | 'not_found';
@@ -174,6 +177,38 @@ export default function App() {
     };
   }, []);
 
+  // Listen for admin reset events for the active student session
+  useEffect(() => {
+    if (!activeStudent) return;
+    const currentEmail = activeStudent.email.toLowerCase();
+
+    const doReset = (targetEmail: string) => {
+      if (targetEmail.toLowerCase() === currentEmail) {
+        setActiveStudent(null);
+        setQuizResult(null);
+        setRoute('student_login');
+      }
+    };
+
+    if (syncBroadcastChannel) {
+      const channel = syncBroadcastChannel;
+      const handleBroadcast = (e: MessageEvent) => {
+        if (e.data?.type === 'reset_student_session' && e.data?.payload?.studentEmail) {
+          doReset(e.data.payload.studentEmail);
+        }
+      };
+      channel.addEventListener('message', handleBroadcast);
+      return () => channel.removeEventListener('message', handleBroadcast);
+    }
+
+    const ch = getOrCreateArenaChannel();
+    ch.on('broadcast', { event: 'reset_student_session' }, ({ payload }) => {
+      if (payload?.studentEmail) {
+        doReset(payload.studentEmail);
+      }
+    });
+  }, [activeStudent]);
+
   // Student login success handler
   const handleStudentLoginSuccess = (student: StudentProfile) => {
     setActiveStudent(student);
@@ -181,17 +216,20 @@ export default function App() {
     setSessionQuestions(shuffled);
     setRoute('quiz_session');
 
-    // Broadcast student entry to Admin live
+    const schedule = getQuizSchedule();
+    const isAlreadyActive = schedule.state === 'in_progress' && schedule.isQuizActive;
+
+    // Broadcast student entry to Admin live with accurate status
     broadcastStudentJoined({
       studentId: student.id || student.email,
       name: student.full_name,
       email: student.email,
       college: student.college || 'Engineering College',
-      currentQuestion: 1,
+      currentQuestion: isAlreadyActive ? 1 : 0,
       totalQuestions: shuffled.length,
       score: 0,
       violationsCount: 0,
-      status: 'active',
+      status: isAlreadyActive ? 'active' : 'lobby',
       lastSeen: new Date().toISOString(),
     });
   };

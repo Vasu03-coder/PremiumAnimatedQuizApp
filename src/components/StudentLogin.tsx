@@ -1,7 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { KeyRound, ShieldCheck, AlertCircle, ArrowRight, Loader2, CheckCircle2 } from 'lucide-react';
-import { verifyStudentByPasscode, PREDEFINED_PASSCODES } from '../lib/supabase';
+import {
+  verifyStudentByPasscode,
+  PREDEFINED_PASSCODES,
+  isStudentCompleted,
+  syncBroadcastChannel,
+  getOrCreateArenaChannel,
+} from '../lib/supabase';
 import type { StudentProfile } from '../types/quiz';
 
 interface StudentLoginProps {
@@ -17,6 +23,36 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
   const normalized = passcode.trim().toUpperCase();
   const matchedPreview = PREDEFINED_PASSCODES[normalized];
 
+  // Listen for admin reset events
+  useEffect(() => {
+    const handleReset = (studentEmail: string) => {
+      if (
+        matchedPreview &&
+        matchedPreview.email.toLowerCase() === studentEmail.toLowerCase()
+      ) {
+        setErrorMessage(null);
+      }
+    };
+
+    if (syncBroadcastChannel) {
+      const channel = syncBroadcastChannel;
+      const handleBroadcast = (e: MessageEvent) => {
+        if (e.data?.type === 'reset_student_session' && e.data?.payload?.studentEmail) {
+          handleReset(e.data.payload.studentEmail);
+        }
+      };
+      channel.addEventListener('message', handleBroadcast);
+      return () => channel.removeEventListener('message', handleBroadcast);
+    }
+
+    const ch = getOrCreateArenaChannel();
+    ch.on('broadcast', { event: 'reset_student_session' }, ({ payload }) => {
+      if (payload?.studentEmail) {
+        handleReset(payload.studentEmail);
+      }
+    });
+  }, [matchedPreview]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!passcode.trim()) {
@@ -31,6 +67,18 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
       const result = await verifyStudentByPasscode(passcode);
 
       if (result.success && result.student) {
+        // Enforce Single-Attempt Rule: Check if candidate has already completed
+        const completionCheck = isStudentCompleted(result.student.email, passcode);
+        if (completionCheck.completed) {
+          setErrorMessage(
+            `Assessment Completed: Candidate has already submitted this examination (Score: ${
+              completionCheck.score ?? 0
+            } pts). Multiple attempts are locked. If you encountered an issue, please ask the administrator to grant a re-attempt.`
+          );
+          setIsLoading(false);
+          return;
+        }
+
         onLoginSuccess(result.student);
       } else {
         setErrorMessage(

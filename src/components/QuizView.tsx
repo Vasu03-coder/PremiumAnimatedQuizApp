@@ -18,6 +18,7 @@ import {
   broadcastProctoringAlert,
   getOrCreateArenaChannel,
   getQuizSchedule,
+  syncBroadcastChannel,
   type QuizSchedulePayload,
 } from '../lib/supabase';
 
@@ -49,14 +50,14 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
   const [hasTesterBypassed, setHasTesterBypassed] = useState(false);
   const isBypassed = isDemoUser || hasTesterBypassed;
 
-  // Synchronized Quiz Start Schedule State
+  // Synchronized Quiz Session Schedule & State
   const [schedule, setSchedule] = useState<QuizSchedulePayload>(() => getQuizSchedule());
-  const [secondsUntilStart, setSecondsUntilStart] = useState<number>(() => {
-    if (isDemoUser) return 0;
-    const current = getQuizSchedule();
-    if (!current.scheduledStartTime) return 0;
-    const diff = Math.floor((new Date(current.scheduledStartTime).getTime() - Date.now()) / 1000);
-    return Math.max(0, diff);
+  const [countdownRemaining, setCountdownRemaining] = useState<number>(() => {
+    const s = getQuizSchedule();
+    if (s.state === 'countdown' && s.countdownEndTime) {
+      return Math.max(0, Math.ceil((new Date(s.countdownEndTime).getTime() - Date.now()) / 1000));
+    }
+    return 10;
   });
 
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -72,84 +73,51 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
   const [violationsCount, setViolationsCount] = useState(0);
   const [activeWarning, setActiveWarning] = useState<string | null>(null);
   const [adminBroadcastMsg, setAdminBroadcastMsg] = useState<string | null>(null);
-  const [isQuizPaused, setIsQuizPaused] = useState<boolean>(() => !getQuizSchedule().isQuizActive);
 
-  // Periodically compute seconds remaining until scheduled start
+  const questionStartRef = React.useRef<number>(Date.now());
+  const isQuizPaused = schedule.state === 'paused' || !schedule.isQuizActive;
+  const isLobby = schedule.state === 'lobby' && !isBypassed;
+  const isCountdown = schedule.state === 'countdown' && !isBypassed;
+  const isQuizActive = (schedule.state === 'in_progress' || isBypassed) && !isQuizPaused;
+
+  // Synchronized schedule listener across BroadcastChannel, CustomEvent, and Supabase
   useEffect(() => {
-    if (isBypassed) {
-      setSecondsUntilStart(0);
-      return;
-    }
-
-    const checkSchedule = () => {
-      const current = getQuizSchedule();
-      if (typeof current.isQuizActive === 'boolean') {
-        setIsQuizPaused(!current.isQuizActive);
+    const handleUpdate = (updated: QuizSchedulePayload) => {
+      if (!updated) return;
+      setSchedule(updated);
+      if (updated.state === 'countdown' && updated.countdownEndTime) {
+        const diff = Math.max(0, Math.ceil((new Date(updated.countdownEndTime).getTime() - Date.now()) / 1000));
+        setCountdownRemaining(diff);
       }
-      if (!current.scheduledStartTime) {
-        setSecondsUntilStart(0);
-        return;
+      if (updated.state === 'in_progress') {
+        questionStartRef.current = Date.now();
       }
-      const diff = Math.floor((new Date(current.scheduledStartTime).getTime() - Date.now()) / 1000);
-      setSecondsUntilStart(Math.max(0, diff));
     };
 
-    checkSchedule();
-    const interval = setInterval(checkSchedule, 500);
-    return () => clearInterval(interval);
-  }, [schedule.scheduledStartTime, isBypassed]);
+    if (syncBroadcastChannel) {
+      const handleBroadcast = (e: MessageEvent) => {
+        if (e.data?.type === 'quiz_schedule_update') {
+          handleUpdate(e.data.payload);
+        }
+      };
+      syncBroadcastChannel.addEventListener('message', handleBroadcast);
+    }
 
-  // Realtime schedule update listener & cross-tab storage listener
-  useEffect(() => {
     const channel = getOrCreateArenaChannel();
-
     channel.on('broadcast', { event: 'quiz_schedule_update' }, ({ payload }) => {
-      if (payload) {
-        setSchedule(payload);
-        if (typeof payload.isQuizActive === 'boolean') {
-          setIsQuizPaused(!payload.isQuizActive);
-        }
-        if (payload.scheduledStartTime) {
-          const diff = Math.floor((new Date(payload.scheduledStartTime).getTime() - Date.now()) / 1000);
-          setSecondsUntilStart(Math.max(0, diff));
-        } else {
-          setSecondsUntilStart(0);
-        }
-      }
+      handleUpdate(payload);
     });
 
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'spark_quiz_schedule' && e.newValue) {
         try {
-          const updated = JSON.parse(e.newValue);
-          setSchedule(updated);
-          if (typeof updated.isQuizActive === 'boolean') {
-            setIsQuizPaused(!updated.isQuizActive);
-          }
-          if (updated.scheduledStartTime) {
-            const diff = Math.floor((new Date(updated.scheduledStartTime).getTime() - Date.now()) / 1000);
-            setSecondsUntilStart(Math.max(0, diff));
-          } else {
-            setSecondsUntilStart(0);
-          }
+          handleUpdate(JSON.parse(e.newValue));
         } catch (err) {}
       }
     };
 
     const handleCustomEvent = (e: any) => {
-      const payload = e.detail;
-      if (payload) {
-        setSchedule(payload);
-        if (typeof payload.isQuizActive === 'boolean') {
-          setIsQuizPaused(!payload.isQuizActive);
-        }
-        if (payload.scheduledStartTime) {
-          const diff = Math.floor((new Date(payload.scheduledStartTime).getTime() - Date.now()) / 1000);
-          setSecondsUntilStart(Math.max(0, diff));
-        } else {
-          setSecondsUntilStart(0);
-        }
-      }
+      handleUpdate(e.detail);
     };
 
     window.addEventListener('storage', handleStorageChange);
@@ -159,6 +127,41 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
       window.removeEventListener('spark_quiz_schedule_change', handleCustomEvent);
     };
   }, []);
+
+  // Synchronized 10-Second Countdown timer
+  useEffect(() => {
+    if (schedule.state !== 'countdown' || isBypassed) return;
+
+    const interval = setInterval(() => {
+      if (!schedule.countdownEndTime) {
+        setCountdownRemaining((prev) => {
+          if (prev <= 1) {
+            setSchedule((cur) => ({ ...cur, state: 'in_progress', isQuizActive: true }));
+            questionStartRef.current = Date.now();
+            return 0;
+          }
+          return prev - 1;
+        });
+      } else {
+        const diff = Math.ceil((new Date(schedule.countdownEndTime).getTime() - Date.now()) / 1000);
+        if (diff <= 0) {
+          setCountdownRemaining(0);
+          setSchedule((cur) => ({ ...cur, state: 'in_progress', isQuizActive: true }));
+          questionStartRef.current = Date.now();
+        } else {
+          setCountdownRemaining(diff);
+        }
+      }
+    }, 250);
+
+    return () => clearInterval(interval);
+  }, [schedule.state, schedule.countdownEndTime, isBypassed]);
+
+  // Reset per-question timestamp when question advances
+  useEffect(() => {
+    questionStartRef.current = Date.now();
+    setTimeLeft(SECONDS_PER_QUESTION);
+  }, [currentIndex]);
 
   const currentQ = questions[currentIndex] || questions[0];
   const progressPercent = ((currentIndex + 1) / questions.length) * 100;
@@ -236,7 +239,11 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
 
     channel.on('broadcast', { event: 'quiz_status_change' }, ({ payload }) => {
       if (payload && typeof payload.isQuizActive === 'boolean') {
-        setIsQuizPaused(!payload.isQuizActive);
+        setSchedule((prev) => ({
+          ...prev,
+          isQuizActive: payload.isQuizActive,
+          state: payload.isQuizActive ? 'in_progress' : 'paused',
+        }));
       }
     });
 
@@ -310,22 +317,22 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
     }
   }, [calculateCurrentScore, currentIndex, notifyScoreProgress, onCompleteQuiz, questions.length, answers, penalizedQuestions, violationsCount]);
 
-  // Countdown Timer for questions
+  // Drift-free Countdown Timer for questions
   useEffect(() => {
-    if (isQuizPaused || (!isBypassed && secondsUntilStart > 0)) return;
+    if (!isQuizActive) return;
 
     const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          handleNextQuestion();
-          return SECONDS_PER_QUESTION;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+      const elapsed = Math.floor((Date.now() - questionStartRef.current) / 1000);
+      const remaining = Math.max(0, SECONDS_PER_QUESTION - elapsed);
+      setTimeLeft(remaining);
+
+      if (remaining <= 0) {
+        handleNextQuestion();
+      }
+    }, 250);
 
     return () => clearInterval(timer);
-  }, [currentIndex, handleNextQuestion, isQuizPaused, isBypassed, secondsUntilStart]);
+  }, [currentIndex, handleNextQuestion, isQuizActive]);
 
   const handleSelectOption = (optionIndex: number) => {
     setAnswers((prev) => ({
@@ -374,22 +381,57 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
     .substring(0, 2)
     .toUpperCase();
 
-  // If the candidate is NOT bypassed and the scheduled start timer has not yet reached zero,
-  // render the synchronized Waiting Room with live countdown lock!
-  if (!isBypassed && secondsUntilStart > 0) {
-    const hours = Math.floor(secondsUntilStart / 3600);
-    const minutes = Math.floor((secondsUntilStart % 3600) / 60);
-    const seconds = secondsUntilStart % 60;
-    const formattedCountdown =
-      hours > 0
-        ? `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
-        : `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-    const targetTimeFormatted =
-      schedule.targetClockTime ||
-      (schedule.scheduledStartTime
-        ? new Date(schedule.scheduledStartTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true })
-        : null);
+  // 1. Synchronized 10-Second Countdown Screen
+  if (isCountdown) {
+    return (
+      <div className="w-full max-w-xl mx-auto px-4 py-12 text-center">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="surface-card rounded-3xl p-8 sm:p-12 relative shadow-2xl border border-blue-500/30 overflow-hidden"
+        >
+          {/* Animated background glow rings */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-64 h-64 rounded-full bg-blue-500/10 blur-3xl animate-pulse" />
+          </div>
 
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/30 text-xs font-mono font-semibold mb-6">
+            <span className="w-2 h-2 rounded-full bg-blue-400 animate-ping" />
+            <span>ASSESSMENT COMMENCING</span>
+          </div>
+
+          <h2 className="text-xl sm:text-2xl font-bold text-white tracking-tight mb-2">
+            Get Ready, {student.full_name}!
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-400 max-w-xs mx-auto mb-8">
+            The administrator has initiated the session. All questions unlock simultaneously.
+          </p>
+
+          {/* Giant Countdown Digits */}
+          <div className="relative my-4 flex items-center justify-center">
+            <div className="w-36 h-36 sm:w-44 sm:h-44 rounded-full bg-gradient-to-b from-blue-600/20 to-slate-900 border-2 border-blue-500/40 flex items-center justify-center shadow-inner shadow-blue-500/30">
+              <motion.span
+                key={countdownRemaining}
+                initial={{ scale: 1.4, opacity: 0.6 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.3 }}
+                className="text-7xl sm:text-8xl font-mono font-black text-transparent bg-clip-text bg-gradient-to-b from-white via-blue-200 to-blue-400"
+              >
+                {countdownRemaining}
+              </motion.span>
+            </div>
+          </div>
+
+          <p className="text-xs font-mono text-blue-400 mt-6 animate-pulse">
+            Starting in {countdownRemaining} second{countdownRemaining !== 1 ? 's' : ''}...
+          </p>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // 2. Student Waiting Lobby Screen (Admin has not started quiz yet)
+  if (isLobby) {
     return (
       <div className="w-full max-w-2xl mx-auto px-3 sm:px-4 py-4 sm:py-8">
         {/* Admin Broadcast Banner */}
@@ -411,42 +453,45 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
         </AnimatePresence>
 
         <div className="surface-card rounded-2xl p-5 sm:p-8 relative shadow-2xl border border-white/10 text-center">
-          {/* Paused Alert Banner in Waiting Room */}
+          {/* Paused Alert Banner in Lobby */}
           {isQuizPaused && (
             <div className="mb-4 p-3.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-200 text-xs sm:text-sm flex items-center justify-center gap-2">
               <Lock size={16} className="text-amber-400 shrink-0" />
               <span className="font-semibold text-amber-300">Quiz is currently PAUSED by Administrator.</span>
-              <span className="text-slate-300">The session is on hold.</span>
             </div>
           )}
 
           {/* Top pulse badge */}
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-mono font-medium mb-4">
-            <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
-            <span>WAITING ROOM • SYNCHRONIZED START</span>
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-mono font-medium mb-4">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+            <span>CONNECTED & READY IN LOBBY</span>
           </div>
 
           <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-white tracking-tight mb-2">
             SPARKTRON 2026 Assessment Arena
           </h1>
           <p className="text-xs sm:text-sm text-slate-400 max-w-md mx-auto mb-6">
-            The examination questions will automatically unlock when the administrator start timer reaches zero.
+            Waiting for the administrator / host to start the quiz. Please remain on this screen.
           </p>
 
-          {/* Glowing Digital Countdown Clock */}
-          <div className="my-6 p-6 sm:p-8 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950 border border-blue-500/20 shadow-inner">
-            <div className="text-[11px] font-mono text-slate-400 uppercase tracking-widest mb-1">
-              Time Until Quiz Unlocks
-            </div>
-            <div className="text-5xl sm:text-6xl md:text-7xl font-mono font-extrabold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-200 to-cyan-400 drop-shadow-sm">
-              {formattedCountdown}
-            </div>
-            {targetTimeFormatted && (
-              <div className="text-xs text-slate-400 font-mono mt-2 flex items-center justify-center gap-1.5">
-                <Clock size={13} className="text-blue-400" />
-                <span>Scheduled Launch Time: <strong className="text-blue-300">{targetTimeFormatted}</strong></span>
+          {/* Animated Waiting Radar Box */}
+          <div className="my-6 p-6 sm:p-8 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950 border border-emerald-500/20 shadow-inner">
+            <div className="flex flex-col items-center justify-center py-4">
+              <div className="relative flex items-center justify-center mb-4">
+                <span className="absolute w-20 h-20 rounded-full bg-emerald-500/20 animate-ping" />
+                <span className="absolute w-14 h-14 rounded-full bg-emerald-500/30 animate-pulse" />
+                <div className="relative w-12 h-12 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                  <ShieldCheck size={24} />
+                </div>
               </div>
-            )}
+
+              <div className="text-base sm:text-lg font-semibold text-white tracking-tight">
+                Candidate Registered & In Waiting Room
+              </div>
+              <p className="text-xs text-slate-400 mt-1 max-w-sm text-center">
+                The session will begin simultaneously for all candidates as soon as the host launches the assessment.
+              </p>
+            </div>
           </div>
 
           {/* Candidate Card */}
@@ -480,10 +525,10 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
             <div className="p-3 rounded-lg bg-slate-900/40 border border-slate-800/60">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200 mb-1">
                 <ShieldCheck size={14} className="text-emerald-400 shrink-0" />
-                <span>Proctoring Armed</span>
+                <span>Anti-Cheat Armed</span>
               </div>
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                Tab switches, window defocus, and screenshots will be logged as violations.
+                Tab switches, window defocus, and screenshots are monitored in real time.
               </p>
             </div>
 
@@ -493,17 +538,17 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
                 <span>60s / Question</span>
               </div>
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                Each question has a 60-second limit and auto-submits when expired.
+                Each question has a strict 60-second limit and auto-submits when expired.
               </p>
             </div>
 
             <div className="p-3 rounded-lg bg-slate-900/40 border border-slate-800/60">
               <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200 mb-1">
                 <Zap size={14} className="text-amber-400 shrink-0" />
-                <span>Auto Launch</span>
+                <span>Shuffled Paper</span>
               </div>
               <p className="text-[11px] text-slate-400 leading-relaxed">
-                No need to refresh the page. The questions unlock automatically.
+                Questions and multiple-choice options are uniquely randomized per candidate.
               </p>
             </div>
           </div>
