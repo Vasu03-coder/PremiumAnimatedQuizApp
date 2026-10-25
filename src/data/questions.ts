@@ -1,264 +1,266 @@
 import type { Question } from '../types/quiz';
 
+export const OFFICIAL_QUESTION_BANK_VERSION = 'v2026_sparktron_official_final';
+
 export const INITIAL_QUESTIONS: Question[] = [
   {
     id: 1,
-    question: "Which semiconductor device is primarily controlled by an electric field?",
+    question: "Which component is commonly used to store energy in a magnetic field?",
     options: [
-      "BJT (Bipolar Junction Transistor)",
-      "MOSFET (Metal-Oxide-Semiconductor Field-Effect Transistor)",
-      "SCR (Silicon Controlled Rectifier)",
-      "TRIAC (Triode for Alternating Current)"
+      "Capacitor",
+      "Inductor",
+      "Resistor",
+      "Diode"
     ],
     correctAnswer: 1,
-    category: "Semiconductors",
+    category: "Basic Electrical",
     points: 1
   },
   {
     id: 2,
-    question: "What is the primary function of a digital multiplexer (MUX)?",
+    question: "What is the main function of a program counter in a microprocessor?",
     options: [
-      "To convert analog signals into digital pulses",
-      "To route one of several data inputs to a single output line based on select inputs",
-      "To store digital binary data temporarily across clock cycles",
-      "To modulate the frequency of high-speed digital carriers"
+      "Stores the result of an operation",
+      "Counts the number of instructions executed",
+      "Holds the address of the next instruction",
+      "Stores the current data value"
     ],
-    correctAnswer: 1,
-    category: "Digital Electronics",
+    correctAnswer: 2,
+    category: "Microprocessor",
     points: 1
   },
   {
     id: 3,
-    question: "In Boolean algebra, what is the simplified value of the expression: A + A'B?",
+    question: "Which logic gate gives a HIGH output when its two inputs are different?",
     options: [
-      "A + B",
-      "A' + B",
-      "A · B",
-      "1"
+      "AND",
+      "NOR",
+      "XNOR",
+      "XOR"
     ],
-    correctAnswer: 0,
-    category: "Digital Logic",
+    correctAnswer: 3,
+    category: "Digital Electronics",
     points: 1
   },
   {
     id: 4,
-    question: "Which diode operating mode is specifically utilized for precision DC voltage regulation?",
+    question: "Why is a heat sink attached to a power transistor?",
     options: [
-      "Zener breakdown in reverse-bias",
-      "Tunneling in high forward-bias",
-      "Spontaneous emission in forward-bias",
-      "Avalanche photo-conduction"
+      "To dissipate excess heat",
+      "To increase its switching frequency",
+      "To reduce the input voltage",
+      "To store electrical energy"
     ],
     correctAnswer: 0,
-    category: "Electronic Devices",
+    category: "Power Electronics",
     points: 1
   },
   {
     id: 5,
-    question: "According to the Nyquist-Shannon sampling theorem, what is the minimum sampling frequency required for a signal with maximum frequency fm?",
+    question: "What is the main advantage of using an interrupt in a microcontroller?",
     options: [
-      "fm / 2",
-      "fm",
-      "2 × fm",
-      "4 × fm"
+      "It increases the memory capacity",
+      "It allows the CPU to respond to events without continuously checking them",
+      "It eliminates the need for a clock",
+      "It permanently stops the main program"
     ],
-    correctAnswer: 2,
-    category: "Signals & Systems",
+    correctAnswer: 1,
+    category: "Microcontroller",
     points: 1
   },
   {
     id: 6,
-    question: "What is the theoretical Common Mode Rejection Ratio (CMRR) of an ideal Operational Amplifier?",
+    question: "Which device is commonly used to convert DC power into AC power?",
     options: [
-      "Zero",
-      "Unity (1)",
-      "100 dB",
-      "Infinity (∞)"
+      "Rectifier",
+      "Chopper",
+      "Inverter",
+      "Transformer"
     ],
-    correctAnswer: 3,
-    category: "Analog Circuits",
+    correctAnswer: 2,
+    category: "Power Electronics",
     points: 1
   },
   {
     id: 7,
-    question: "In an 8051 microcontroller architecture, how many 8-bit bidirectional I/O ports are present?",
+    question: "What happens when a diode is connected in reverse bias under normal operating conditions?",
     options: [
-      "2 Ports (P0, P1)",
-      "4 Ports (P0, P1, P2, P3)",
-      "6 Ports (P0 to P5)",
-      "8 Ports"
+      "It conducts maximum current",
+      "It allows only a small leakage current",
+      "It acts as a short circuit",
+      "It amplifies the applied voltage"
     ],
     correctAnswer: 1,
-    category: "Embedded Systems",
+    category: "EDC",
     points: 1
   },
   {
     id: 8,
-    question: "What is the skin depth (δ) in a high-conductivity electromagnetic conductor inversely proportional to?",
+    question: "Which motor is commonly preferred when precise angular position control is required?",
     options: [
-      "Square root of frequency (√f)",
-      "Frequency squared (f²)",
-      "Permittivity only (ε)",
-      "Wavelength (λ)"
+      "Stepper motor",
+      "Induction motor",
+      "DC series motor",
+      "Universal motor"
     ],
     correctAnswer: 0,
-    category: "Electromagnetics",
+    category: "Electrical Machines",
     points: 1
   },
   {
     id: 9,
-    question: "Which flip-flop architecture resolves the race-around condition typically seen in JK flip-flops?",
+    question: "In a BJT, which region is made very thin to allow efficient transistor action?",
     options: [
-      "Master-Slave JK Flip-Flop",
-      "Basic SR Latch",
-      "Unclocked D Latch",
-      "T Latch with propagation delay"
+      "Collector",
+      "Base",
+      "Emitter",
+      "Substrate"
+    ],
+    correctAnswer: 1,
+    category: "EDC",
+    points: 1
+  },
+  {
+    id: 10,
+    question: "What is the main purpose of the accumulator in a microprocessor?",
+    options: [
+      "To store the address of the next instruction",
+      "To temporarily store arithmetic and logic operation results",
+      "To control the clock frequency",
+      "To store the entire program"
+    ],
+    correctAnswer: 1,
+    category: "Microprocessor",
+    points: 1
+  },
+  {
+    id: 11,
+    question: "Which modulation technique is generally more resistant to amplitude noise?",
+    options: [
+      "AM",
+      "ASK",
+      "PAM",
+      "FM"
+    ],
+    correctAnswer: 3,
+    category: "Communication",
+    points: 1
+  },
+  {
+    id: 12,
+    question: "What is the main function of a multiplexer?",
+    options: [
+      "Select one of several input signals",
+      "Convert analog data into digital data",
+      "Store multiple binary values",
+      "Generate a clock signal"
     ],
     correctAnswer: 0,
     category: "Digital Electronics",
     points: 1
   },
   {
-    id: 10,
-    question: "In wireless and satellite communications, which modulation technique varies both amplitude and phase simultaneously?",
-    options: [
-      "BPSK (Binary Phase Shift Keying)",
-      "QAM (Quadrature Amplitude Modulation)",
-      "FSK (Frequency Shift Keying)",
-      "PWM (Pulse Width Modulation)"
-    ],
-    correctAnswer: 1,
-    category: "Communication Systems",
-    points: 1
-  },
-  {
-    id: 11,
-    question: "Which feedback topology is used in a standard operational amplifier inverting amplifier?",
-    options: [
-      "Voltage-Series Feedback",
-      "Voltage-Shunt Feedback",
-      "Current-Series Feedback",
-      "Current-Shunt Feedback"
-    ],
-    correctAnswer: 1,
-    category: "Analog Circuits",
-    points: 1
-  },
-  {
-    id: 12,
-    question: "What is the primary operational advantage of CMOS technology over traditional TTL circuits?",
-    options: [
-      "Near-zero static power dissipation and high noise immunity",
-      "Significantly higher output drive currents at low supply voltages",
-      "Purely inductive input impedance at high frequencies",
-      "Complete immunity to electrostatic discharge (ESD)"
-    ],
-    correctAnswer: 0,
-    category: "VLSI Design",
-    points: 1
-  },
-  {
     id: 13,
-    question: "In digital signal processing (DSP), why are Finite Impulse Response (FIR) filters often preferred?",
+    question: "Which power electronic device conducts current in both directions when appropriately triggered?",
     options: [
-      "They require far fewer delay elements than equivalent IIR filters",
-      "They are inherently stable and can be designed for exact linear phase",
-      "They consume zero memory buffers in recursive filtering",
-      "Their poles always lie outside the unit circle in the z-plane"
+      "SCR",
+      "TRIAC",
+      "Power diode",
+      "IGBT"
     ],
     correctAnswer: 1,
-    category: "DSP",
+    category: "Power Electronics",
     points: 1
   },
   {
     id: 14,
-    question: "What physical phenomenon enables total light confinement inside an optical fiber glass core?",
+    question: "Why are CMOS circuits widely used in VLSI design?",
     options: [
-      "Chromic dispersion within the refractive buffer",
-      "Rayleigh backscattering along the outer cladding",
-      "Total Internal Reflection (TIR) at core-cladding boundary",
-      "Fresnel reflection through atmospheric refractive index"
+      "They require no clock signal",
+      "They contain no semiconductor devices",
+      "They have low static power consumption",
+      "They eliminate propagation delay"
     ],
     correctAnswer: 2,
-    category: "Optical Communication",
+    category: "VLSI",
     points: 1
   },
   {
     id: 15,
-    question: "In an ARM Cortex-M microcontroller register bank, which register specifically acts as the Link Register (LR)?",
+    question: "Which memory loses its stored data when the power supply is switched OFF?",
     options: [
-      "R14",
-      "R13",
-      "R15",
-      "R12"
+      "ROM",
+      "Flash",
+      "EEPROM",
+      "RAM"
     ],
-    correctAnswer: 0,
+    correctAnswer: 3,
     category: "Embedded Systems",
     points: 1
   },
   {
     id: 16,
-    question: "What are the two conditions of Barkhausen's criterion for sustained steady oscillations in an electronic oscillator?",
+    question: "Which type of filter allows signals within a particular frequency range to pass while attenuating frequencies outside that range?",
     options: [
-      "Loop gain |Aβ| > 10 and net loop phase shift = 90°",
-      "Open-loop gain A = 0 and feedback factor β = 1",
-      "Loop gain |Aβ| = 1 and total loop phase shift = 0° or 360°",
-      "Loop gain |Aβ| < 0.5 with 180° capacitive feedback"
+      "Low-pass filter",
+      "High-pass filter",
+      "Band-pass filter",
+      "Band-stop filter"
     ],
     correctAnswer: 2,
-    category: "Analog Electronics",
+    category: "Signal Processing",
     points: 1
   },
   {
     id: 17,
-    question: "What does the radiation resistance (Rr) of an electromagnetic transmitting antenna represent?",
+    question: "Which electrical machine operates based on electromagnetic induction between the stator and rotor?",
     options: [
-      "Ohmic heat losses dissipated in the antenna metallic element",
-      "Equivalent resistance representing useful power radiated into free space",
-      "Reactive impedance caused by near-field capacitive coupling",
-      "Characteristic impedance of the coaxial feed line"
+      "DC generator",
+      "Induction motor",
+      "Stepper motor",
+      "Permanent magnet DC motor"
     ],
     correctAnswer: 1,
-    category: "Electromagnetics",
+    category: "Electrical Machines",
     points: 1
   },
   {
     id: 18,
-    question: "Which high-speed wireless multiplexing technology utilizes orthogonal subcarrier spacing to eliminate ISI?",
+    question: "In CMOS technology, which pair of transistors is used to construct a basic inverter?",
     options: [
-      "OFDM / OFDMA (Orthogonal Frequency-Division Multiplexing)",
-      "CDMA (Code Division Multiple Access with PN spreading)",
-      "TDMA (Time Division Multiple Access with guard intervals)",
-      "Pure ALOHA Carrier Sense Multiple Access"
+      "Two NMOS transistors",
+      "Two PMOS transistors",
+      "One NMOS and one PMOS transistor",
+      "One BJT and one MOSFET"
     ],
-    correctAnswer: 0,
-    category: "Wireless Systems",
+    correctAnswer: 2,
+    category: "VLSI",
     points: 1
   },
   {
     id: 19,
-    question: "In a Phase-Locked Loop (PLL) communication circuit, which element detects phase error between input and VCO?",
+    question: "Which communication protocol typically uses TX and RX lines for serial data transfer?",
     options: [
-      "Low-Pass Loop Filter",
-      "Voltage-Controlled Oscillator",
-      "Frequency Divider prescaler",
-      "Phase Detector (Comparator)"
+      "SPI",
+      "I²C",
+      "CAN",
+      "UART"
     ],
     correctAnswer: 3,
-    category: "Communication Circuits",
+    category: "Embedded Systems",
     points: 1
   },
   {
     id: 20,
-    question: "Why is a synchronous binary counter preferred over an asynchronous ripple counter in high-speed digital systems?",
+    question: "What happens to the output voltage of an ideal boost converter compared with its input voltage during normal operation?",
     options: [
-      "It requires no external clock source whatsoever",
-      "All flip-flops trigger simultaneously, eliminating cumulative propagation delay ripples",
-      "It consumes zero dynamic switching power across all clock transitions",
-      "It uses unclocked SR latches instead of master-slave flip-flops"
+      "It is higher than the input voltage",
+      "It is always equal to the input voltage",
+      "It is lower than the input voltage",
+      "It becomes an AC voltage"
     ],
-    correctAnswer: 1,
-    category: "Digital Electronics",
+    correctAnswer: 0,
+    category: "Power Electronics",
     points: 1
   }
 ];

@@ -1156,9 +1156,18 @@ export function getCandidateSubmission(email?: string, passcode?: string): QuizS
 /**
  * Cloud and Local synchronized question bank helpers
  */
+export const OFFICIAL_QUESTION_VERSION = 'v2026_sparktron_official_final';
+
 export async function syncQuestionsWithCloud(fallbackQuestions: Question[]): Promise<Question[]> {
-  // 1. Try reading from localStorage first if custom edits exist
+  // Check if official question bank was updated to force local storage refresh
   try {
+    const cachedVersion = localStorage.getItem('spark_quiz_questions_version');
+    if (cachedVersion !== OFFICIAL_QUESTION_VERSION) {
+      localStorage.setItem('spark_quiz_questions', JSON.stringify(fallbackQuestions));
+      localStorage.setItem('spark_quiz_questions_version', OFFICIAL_QUESTION_VERSION);
+      return fallbackQuestions;
+    }
+
     const local = localStorage.getItem('spark_quiz_questions');
     if (local) {
       const parsed = JSON.parse(local);
