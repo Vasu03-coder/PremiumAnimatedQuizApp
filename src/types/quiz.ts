@@ -35,7 +35,7 @@ export interface StudentProfile {
   sessionId?: string;
 }
 
-export type QuizSessionState = 'lobby' | 'countdown' | 'in_progress' | 'paused';
+export type QuizSessionState = 'lobby' | 'countdown' | 'in_progress';
 
 export interface QuizScheduleConfig {
   state: QuizSessionState;

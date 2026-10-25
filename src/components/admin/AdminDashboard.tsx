@@ -129,7 +129,6 @@ export default function AdminDashboard({
   // Admin Broadcast Announcement State
   const [announcementText, setAnnouncementText] = useState('');
   const [schedule, setSchedule] = useState<QuizSchedulePayload>(() => getQuizSchedule());
-  const isQuizLocked = !schedule.isQuizActive;
   const [remainingStartSeconds, setRemainingStartSeconds] = useState<number>(() => {
     const sched = getQuizSchedule();
     if (!sched.scheduledStartTime) return 0;
@@ -252,30 +251,6 @@ export default function AdminDashboard({
     showToast('🔄 Session returned to Waiting Lobby.');
   };
 
-  const handlePauseQuiz = () => {
-    const payload: QuizSchedulePayload = {
-      ...schedule,
-      state: 'paused',
-      isQuizActive: false,
-      message: 'Quiz has been paused by Administrator.',
-    };
-    setSchedule(payload);
-    broadcastQuizSchedule(payload);
-    showToast('⏸ Quiz paused for all candidates.');
-  };
-
-  const handleResumeQuiz = () => {
-    const payload: QuizSchedulePayload = {
-      ...schedule,
-      state: 'in_progress',
-      isQuizActive: true,
-      message: 'Quiz session resumed by Administrator.',
-    };
-    setSchedule(payload);
-    broadcastQuizSchedule(payload);
-    showToast('▶ Quiz resumed! All candidate screens unfrozen.');
-  };
-
   const handleCopyPasscode = (code: string) => {
     navigator.clipboard.writeText(code);
     setCopiedPasscode(code);
@@ -341,13 +316,25 @@ export default function AdminDashboard({
       };
     });
 
+    // Collect all emails associated with this candidate team
+    const targetKey = findCandidateKey(students, studentEmail, studentPasscode);
+    const candidateObj = targetKey ? students[targetKey] : null;
+    const allCandidateEmails = new Set<string>([studentEmail]);
+    if (candidateObj) {
+      if (candidateObj.email) allCandidateEmails.add(candidateObj.email.toLowerCase());
+      candidateObj.members?.forEach((m) => {
+        if (m.email) allCandidateEmails.add(m.email.toLowerCase());
+      });
+    }
+
     // Wipe recorded proctoring violations for this candidate/team
     setViolations((prev) =>
-      prev.filter(
-        (v) =>
-          v.studentEmail.toLowerCase() !== studentEmail &&
-          (!studentPasscode || !v.studentName.toUpperCase().includes(studentPasscode))
-      )
+      prev.filter((v) => {
+        const vEmail = (v.studentEmail || '').toLowerCase();
+        if (allCandidateEmails.has(vEmail)) return false;
+        if (studentPasscode && v.studentName.toUpperCase().includes(studentPasscode)) return false;
+        return true;
+      })
     );
 
     showToast(`🔄 Re-round granted for ${studentPasscode || studentEmail}! Candidate can re-attempt with shuffled questions.`);
@@ -666,14 +653,7 @@ export default function AdminDashboard({
   };
 
 
-  // Toggle Quiz Lock (Admin Control)
-  const handleToggleQuizLock = () => {
-    if (schedule.isQuizActive) {
-      handlePauseQuiz();
-    } else {
-      handleResumeQuiz();
-    }
-  };
+
 
   // Send Admin Announcement Broadcast
   const handleSendAnnouncement = (e: React.FormEvent) => {
@@ -819,24 +799,39 @@ export default function AdminDashboard({
           </div>
 
           <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto justify-between md:justify-end">
-            {/* Quiz Pause / Unlock Toggle */}
-            <button
-              type="button"
-              onClick={handleToggleQuizLock}
-              className={`px-3 py-1.5 rounded-lg text-xs font-medium border flex items-center gap-1.5 transition-all cursor-pointer ${
-                isQuizLocked
+            {/* Live Session Status Pill */}
+            <div
+              className={`px-3 py-1.5 rounded-lg text-xs font-mono font-medium border flex items-center gap-1.5 transition-all ${
+                schedule.state === 'in_progress'
                   ? isLight
-                    ? 'bg-amber-50 border-amber-300 text-amber-800'
-                    : 'bg-amber-950/40 border-amber-500/50 text-amber-300'
+                    ? 'bg-emerald-50 border-emerald-200 text-emerald-700'
+                    : 'bg-emerald-950/30 border-emerald-500/40 text-emerald-300'
+                  : schedule.state === 'countdown'
+                  ? isLight
+                    ? 'bg-blue-50 border-blue-200 text-blue-700'
+                    : 'bg-blue-950/30 border-blue-500/40 text-blue-300'
                   : isLight
-                  ? 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
-                  : 'bg-emerald-950/30 border-emerald-500/40 text-emerald-300 hover:bg-emerald-950/50'
+                  ? 'bg-slate-100 border-slate-200 text-slate-700'
+                  : 'bg-slate-900 border-slate-800 text-slate-300'
               }`}
-              title={isQuizLocked ? 'Click to Unlock Quiz' : 'Click to Pause Quiz'}
             >
-              {isQuizLocked ? <Lock size={13} className="text-amber-500" /> : <Unlock size={13} className="text-emerald-500" />}
-              <span>{isQuizLocked ? 'Quiz Paused' : 'Quiz Active'}</span>
-            </button>
+              {schedule.state === 'in_progress' ? (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Quiz Active (Live)</span>
+                </>
+              ) : schedule.state === 'countdown' ? (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-blue-400 animate-ping" />
+                  <span>10s Countdown Active</span>
+                </>
+              ) : (
+                <>
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  <span>Waiting in Lobby</span>
+                </>
+              )}
+            </div>
 
             {/* Theme Toggle Button */}
             <button
@@ -941,9 +936,7 @@ export default function AdminDashboard({
 
         {/* SYNCHRONIZED QUIZ START & COUNTDOWN CONTROLLER CARD */}
         <div className={`${cardClass} rounded-2xl p-5 mb-6 border transition-all ${
-          schedule.state === 'paused'
-            ? isLight ? 'border-amber-300 bg-amber-50/60' : 'border-amber-500/40 bg-amber-950/25'
-            : schedule.state === 'countdown'
+          schedule.state === 'countdown'
             ? isLight ? 'border-blue-300 bg-blue-50/50' : 'border-blue-500/40 bg-blue-950/25'
             : schedule.state === 'in_progress'
             ? isLight ? 'border-emerald-200 bg-emerald-50/40' : 'border-emerald-500/30 bg-emerald-950/25'
@@ -953,9 +946,7 @@ export default function AdminDashboard({
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-white/[0.08]">
             <div className="flex items-center gap-3">
               <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-                schedule.state === 'paused'
-                  ? 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
-                  : schedule.state === 'countdown'
+                schedule.state === 'countdown'
                   ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30'
                   : schedule.state === 'in_progress'
                   ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
@@ -968,11 +959,7 @@ export default function AdminDashboard({
                   <h3 className={`text-base font-bold ${textPrimary}`}>
                     Synchronized Assessment Command Center
                   </h3>
-                  {schedule.state === 'paused' ? (
-                    <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-semibold flex items-center gap-1">
-                      <Lock size={10} /> QUIZ PAUSED
-                    </span>
-                  ) : schedule.state === 'countdown' ? (
+                  {schedule.state === 'countdown' ? (
                     <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/40 font-semibold flex items-center gap-1">
                       <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />
                       10s COUNTDOWN ACTIVE
@@ -1005,15 +992,7 @@ export default function AdminDashboard({
           {/* Middle Row: Current Active Status Details & Primary Host Actions */}
           <div className="py-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-b border-white/[0.08]">
             <div>
-              {schedule.state === 'paused' ? (
-                <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
-                  <Lock size={15} className="shrink-0" />
-                  <div>
-                    <span className="font-bold">Quiz Currently Paused: </span>
-                    <span>All candidate screens and 60s timers are frozen. Click Resume to continue.</span>
-                  </div>
-                </div>
-              ) : schedule.state === 'countdown' ? (
+              {schedule.state === 'countdown' ? (
                 <div className="flex flex-wrap items-center gap-3">
                   <div className="text-xs font-mono px-3.5 py-1.5 rounded-xl bg-blue-900/60 border border-blue-500/40 text-blue-200 font-bold flex items-center gap-2">
                     <Timer size={16} className="text-blue-400 animate-spin" />
@@ -1087,51 +1066,15 @@ export default function AdminDashboard({
 
               {/* IN PROGRESS STATE ACTIONS */}
               {schedule.state === 'in_progress' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={handlePauseQuiz}
-                    className="px-3.5 py-2 rounded-xl text-xs font-semibold text-amber-200 bg-amber-950/60 hover:bg-amber-900/60 border border-amber-500/40 shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
-                    title="Pause quiz session and freeze all candidate screens immediately"
-                  >
-                    <Lock size={14} className="text-amber-400" />
-                    <span>Pause Quiz (Freeze All)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleResetToLobby}
-                    className="px-3 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-1.5 cursor-pointer transition-all"
-                    title="Return quiz session to waiting lobby"
-                  >
-                    <RotateCcw size={13} />
-                    <span>Return to Lobby</span>
-                  </button>
-                </>
-              )}
-
-              {/* PAUSED STATE ACTIONS */}
-              {schedule.state === 'paused' && (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleResumeQuiz}
-                    className="px-3.5 py-2 rounded-xl text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-500 shadow-sm flex items-center gap-1.5 transition-all cursor-pointer"
-                    title="Resume quiz and unfreeze student screens"
-                  >
-                    <Play size={14} fill="currentColor" />
-                    <span>Resume Quiz (Unfreeze All)</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleResetToLobby}
-                    className="px-3 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-1.5 cursor-pointer transition-all"
-                  >
-                    <RotateCcw size={13} />
-                    <span>Return to Lobby</span>
-                  </button>
-                </>
+                <button
+                  type="button"
+                  onClick={handleResetToLobby}
+                  className="px-3.5 py-2 rounded-xl text-xs font-medium text-slate-300 hover:text-white bg-slate-800 hover:bg-slate-700 border border-slate-700 flex items-center gap-1.5 cursor-pointer transition-all"
+                  title="Return quiz session to waiting lobby"
+                >
+                  <RotateCcw size={13} />
+                  <span>Return to Lobby</span>
+                </button>
               )}
             </div>
           </div>

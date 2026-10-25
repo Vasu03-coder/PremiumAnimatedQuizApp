@@ -291,185 +291,151 @@ export function releasePasscodeSession(passcode: string, sessionId?: string) {
 }
 
 /**
- * Verify candidate login using their unique PASSCODE or REGISTERED EMAIL
- * Connects directly to their team registration & members
+ * Verify candidate login using BOTH their unique PASSCODE and REGISTERED EMAIL.
+ * Two-factor validation prevents code-guessing and team impersonation.
+ * The entered email MUST match either team member's registered email for that passcode.
  */
 export async function verifyStudentByPasscode(
-  input: string,
+  passcodeInput: string,
+  emailInput: string,
   candidateSessionId?: string
 ): Promise<{ success: boolean; student?: StudentProfile; message?: string }> {
   try {
-    const cleanInput = (input || '').trim();
-    if (!cleanInput) {
-      return { success: false, message: 'Please enter your candidate assessment passcode or registered email.' };
+    const cleanPasscode = (passcodeInput || '').trim().toUpperCase();
+    const cleanEmail = (emailInput || '').trim().toLowerCase();
+
+    if (!cleanPasscode) {
+      return { success: false, message: 'Please enter your Candidate Assessment Passcode (e.g. SPARK26002).' };
+    }
+    if (!cleanEmail) {
+      return { success: false, message: 'Please enter your team\'s Registered Email Address.' };
+    }
+    if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+      return { success: false, message: 'Please enter a valid email address format (e.g. yourname@gmail.com).' };
     }
 
-    const cleanUpper = cleanInput.toUpperCase();
-    const cleanLower = cleanInput.toLowerCase();
-    const isEmailInput = cleanInput.includes('@');
+    let candidateData: {
+      passcode: string;
+      fullName: string;
+      teamName?: string;
+      college?: string;
+      department?: string;
+      isDemo?: boolean;
+      members: TeamMember[];
+      primaryEmail: string;
+      registrationId?: string;
+    } | null = null;
 
-    let resolvedProfile: StudentProfile | null = null;
+    // 1. Check in PREDEFINED_PASSCODES by Passcode
+    if (PREDEFINED_PASSCODES[cleanPasscode]) {
+      const match = PREDEFINED_PASSCODES[cleanPasscode];
+      const members: TeamMember[] = match.members && match.members.length > 0 ? match.members : [
+        {
+          id: `lead-${match.passcode.toLowerCase()}`,
+          fullName: match.fullName,
+          email: match.email,
+          college: match.college,
+          department: match.department,
+          isLeader: true,
+        }
+      ];
 
-    // 1. Check in PREDEFINED_PASSCODES (by passcode or email)
-    if (PREDEFINED_PASSCODES[cleanUpper]) {
-      const match = PREDEFINED_PASSCODES[cleanUpper];
-      resolvedProfile = {
-        id: `id-${match.passcode.toLowerCase()}`,
-        registration_id: `reg-${match.passcode.toLowerCase()}`,
-        registration_code: match.passcode,
+      candidateData = {
         passcode: match.passcode,
-        full_name: match.fullName,
-        email: match.email,
+        fullName: match.fullName,
+        teamName: match.teamName,
         college: match.college,
         department: match.department,
-        team_name: match.teamName,
-        members: match.members,
-        is_verified: true,
-        is_demo: match.isDemo || false,
+        isDemo: match.isDemo || false,
+        members,
+        primaryEmail: match.email,
+        registrationId: `reg-${match.passcode.toLowerCase()}`,
       };
     } else {
-      // Check if email matches predefined
-      const matchedByEmail = Object.values(PREDEFINED_PASSCODES).find(
-        (p) =>
-          p.email.toLowerCase() === cleanLower ||
-          p.members?.some((m) => m.email.toLowerCase() === cleanLower)
-      );
-      if (matchedByEmail) {
-        resolvedProfile = {
-          id: `id-${matchedByEmail.passcode.toLowerCase()}`,
-          registration_id: `reg-${matchedByEmail.passcode.toLowerCase()}`,
-          registration_code: matchedByEmail.passcode,
-          passcode: matchedByEmail.passcode,
-          full_name: matchedByEmail.fullName,
-          email: matchedByEmail.email,
-          college: matchedByEmail.college,
-          department: matchedByEmail.department,
-          team_name: matchedByEmail.teamName,
-          members: matchedByEmail.members,
-          is_verified: true,
-          is_demo: matchedByEmail.isDemo || false,
+      // 2. Query Supabase registrations by registration_code (Passcode)
+      const { data: reg, error: regErr } = await supabase
+        .from('registrations')
+        .select(
+          'id, registration_code, technical_event_id, status, team_name, participants(id, registration_id, full_name, email, phone, college, department, is_team_leader, year)'
+        )
+        .ilike('registration_code', cleanPasscode)
+        .maybeSingle();
+
+      if (reg && !regErr) {
+        if (reg.technical_event_id !== TECHNICAL_QUIZ_EVENT_ID) {
+          return {
+            success: false,
+            message: 'Access Denied: This passcode is registered for another symposium event, not the Technical Quiz.',
+          };
+        }
+
+        const parts = Array.isArray(reg.participants) ? reg.participants : [];
+        const leader = parts.find((p: any) => p.is_team_leader) || parts[0] || {};
+        const members: TeamMember[] = parts.map((p: any) => ({
+          id: p.id,
+          fullName: p.full_name || 'Member',
+          email: p.email,
+          phone: p.phone,
+          college: p.college,
+          department: p.department,
+          year: p.year,
+          isLeader: p.is_team_leader || false,
+        }));
+
+        const teamDisplayName = reg.team_name
+          ? `${reg.team_name} (${members.map((m) => m.fullName).join(' & ') || leader.full_name})`
+          : leader.full_name || 'Technical Quiz Team';
+
+        candidateData = {
+          passcode: reg.registration_code,
+          fullName: teamDisplayName,
+          teamName: reg.team_name || undefined,
+          college: leader.college || 'Engineering College',
+          department: leader.department || 'ECE',
+          isDemo: false,
+          members,
+          primaryEmail: leader.email || '',
+          registrationId: reg.id,
         };
       }
     }
 
-    // 2. Query Supabase if not found in predefined
-    if (!resolvedProfile) {
-      if (isEmailInput) {
-        // Query by participant email
-        const { data: part, error: partErr } = await supabase
-          .from('participants')
-          .select(
-            'id, registration_id, full_name, email, phone, college, department, is_team_leader, year, registrations!inner(id, registration_code, technical_event_id, status, team_name)'
-          )
-          .ilike('email', cleanLower)
-          .maybeSingle();
-
-        if (part && !partErr) {
-          const reg = (part as any).registrations;
-          if (reg?.technical_event_id !== TECHNICAL_QUIZ_EVENT_ID) {
-            return {
-              success: false,
-              message: 'Access Denied: Your email is registered for another symposium event, not the Technical Quiz.',
-            };
-          }
-
-          // Fetch all participants for this team
-          const { data: allParts } = await supabase
-            .from('participants')
-            .select('id, full_name, email, phone, college, department, is_team_leader, year')
-            .eq('registration_id', part.registration_id);
-
-          const members: TeamMember[] = (allParts || []).map((p: any) => ({
-            id: p.id,
-            fullName: p.full_name || 'Member',
-            email: p.email,
-            phone: p.phone,
-            college: p.college,
-            department: p.department,
-            year: p.year,
-            isLeader: p.is_team_leader || false,
-          }));
-
-          const teamDisplayName = reg.team_name
-            ? `${reg.team_name} (${members.map((m) => m.fullName).join(' & ') || part.full_name})`
-            : part.full_name;
-
-          resolvedProfile = {
-            id: part.id,
-            registration_id: reg.id,
-            registration_code: reg.registration_code,
-            passcode: reg.registration_code,
-            full_name: teamDisplayName,
-            email: part.email,
-            college: part.college || 'Engineering College',
-            department: part.department || 'ECE',
-            phone: part.phone || '',
-            team_name: reg.team_name || undefined,
-            members,
-            is_verified: true,
-            is_demo: false,
-          };
-        }
-      } else {
-        // Query by registration_code (Passcode)
-        const { data: reg, error: regErr } = await supabase
-          .from('registrations')
-          .select(
-            'id, registration_code, technical_event_id, status, team_name, participants(id, registration_id, full_name, email, phone, college, department, is_team_leader, year)'
-          )
-          .ilike('registration_code', cleanUpper)
-          .maybeSingle();
-
-        if (reg && !regErr) {
-          if (reg.technical_event_id !== TECHNICAL_QUIZ_EVENT_ID) {
-            return {
-              success: false,
-              message: 'Access Denied: This passcode is registered for another symposium event, not the Technical Quiz.',
-            };
-          }
-
-          const parts = Array.isArray(reg.participants) ? reg.participants : [];
-          const leader = parts.find((p: any) => p.is_team_leader) || parts[0] || {};
-          const members: TeamMember[] = parts.map((p: any) => ({
-            id: p.id,
-            fullName: p.full_name || 'Member',
-            email: p.email,
-            phone: p.phone,
-            college: p.college,
-            department: p.department,
-            year: p.year,
-            isLeader: p.is_team_leader || false,
-          }));
-
-          const teamDisplayName = reg.team_name
-            ? `${reg.team_name} (${members.map((m) => m.fullName).join(' & ') || leader.full_name})`
-            : leader.full_name || 'Technical Quiz Team';
-
-          resolvedProfile = {
-            id: leader.id || reg.id,
-            registration_id: reg.id,
-            registration_code: reg.registration_code,
-            passcode: reg.registration_code,
-            full_name: teamDisplayName,
-            email: leader.email || `team_${reg.registration_code.toLowerCase()}@spark2026.com`,
-            college: leader.college || 'Engineering College',
-            department: leader.department || 'ECE',
-            phone: leader.phone || '',
-            team_name: reg.team_name || undefined,
-            members,
-            is_verified: true,
-            is_demo: false,
-          };
-        }
-      }
-    }
-
-    if (!resolvedProfile) {
+    if (!candidateData) {
       return {
         success: false,
-        message: `Invalid Passcode or Email "${input}". Access Denied: No confirmed Technical Quiz registration found.`,
+        message: `Invalid Passcode "${passcodeInput}". No Technical Quiz registration found for this passcode.`,
       };
     }
+
+    // Two-Factor Verification: Check if the entered email matches either member of this team!
+    const isEmailMatched =
+      candidateData.primaryEmail.toLowerCase() === cleanEmail ||
+      candidateData.members.some((m) => m.email && m.email.toLowerCase() === cleanEmail);
+
+    if (!isEmailMatched) {
+      return {
+        success: false,
+        message: `Email Verification Failed: The email "${cleanEmail}" is NOT registered for Passcode "${cleanPasscode}". Please enter the registered email of either team member.`,
+      };
+    }
+
+    const matchedMember = candidateData.members.find((m) => m.email && m.email.toLowerCase() === cleanEmail);
+
+    const resolvedProfile: StudentProfile = {
+      id: matchedMember?.id || `id-${candidateData.passcode.toLowerCase()}`,
+      registration_id: candidateData.registrationId,
+      registration_code: candidateData.passcode,
+      passcode: candidateData.passcode,
+      full_name: candidateData.fullName,
+      email: cleanEmail,
+      college: matchedMember?.college || candidateData.college || 'Engineering College',
+      department: matchedMember?.department || candidateData.department || 'ECE',
+      phone: matchedMember?.phone || '',
+      team_name: candidateData.teamName,
+      members: candidateData.members,
+      is_verified: true,
+      is_demo: candidateData.isDemo || false,
+    };
 
     // 3. Single-Attempt Check: Check if candidate or passcode has completed
     const completionCheck = isStudentCompleted(resolvedProfile.email, resolvedProfile.passcode);
@@ -478,7 +444,7 @@ export async function verifyStudentByPasscode(
         success: false,
         message: `Assessment Completed: Candidate team has already submitted this examination (Score: ${
           completionCheck.score ?? 0
-        } pts). Multiple attempts are locked. If you encountered an issue, please ask the administrator to grant a re-attempt.`,
+        } pts). Multiple attempts are locked. If you encountered an issue (such as a call interruption), please ask the administrator to grant a Re-round.`,
       };
     }
 
@@ -488,7 +454,7 @@ export async function verifyStudentByPasscode(
     if (activeCheck.active) {
       return {
         success: false,
-        message: `Session Already Active: Another device or team member is currently taking or waiting in this quiz session with passcode "${effectivePasscode}". Simultaneous duplicate logins with the same passcode are prohibited. Please coordinate with your team member or contact Admin.`,
+        message: `Session Already Active: Another device is currently active in this quiz session with passcode "${effectivePasscode}". Simultaneous duplicate logins with the same passcode are prohibited. Please coordinate with your teammate or contact Admin.`,
       };
     }
 
@@ -900,10 +866,10 @@ export function broadcastResetStudent(studentEmail: string, passcode?: string) {
   });
 }
 
-export type QuizSessionState = 'lobby' | 'countdown' | 'in_progress' | 'paused';
+export type QuizSessionState = 'lobby' | 'countdown' | 'in_progress';
 
 export interface QuizSchedulePayload {
-  state: QuizSessionState; // 'lobby' (waiting for admin to start), 'countdown' (10s countdown), 'in_progress', 'paused'
+  state: QuizSessionState; // 'lobby' (waiting for admin to start), 'countdown' (10s countdown), 'in_progress'
   isQuizActive: boolean;
   countdownSeconds?: number;
   countdownEndTime?: string | null; // ISO string when countdown finishes
@@ -941,8 +907,8 @@ export function getQuizSchedule(): QuizSchedulePayload {
     const saved = localStorage.getItem('spark_quiz_schedule');
     if (saved) {
       const parsed = JSON.parse(saved);
-      // Ensure state exists
-      if (!parsed.state) {
+      // Ensure state exists and clean any legacy 'paused' state
+      if (!parsed.state || parsed.state === 'paused') {
         parsed.state = parsed.isQuizActive ? 'in_progress' : 'lobby';
       }
       return parsed;
@@ -962,9 +928,9 @@ export function broadcastQuizStatus(isQuizActive: boolean) {
   const current = getQuizSchedule();
   const updated: QuizSchedulePayload = {
     ...current,
-    state: isQuizActive ? 'in_progress' : 'paused',
+    state: isQuizActive ? 'in_progress' : 'lobby',
     isQuizActive,
-    message: isQuizActive ? 'Quiz resumed by Administrator' : 'Quiz paused by Administrator',
+    message: isQuizActive ? 'Quiz started by Administrator' : 'Quiz returned to Waiting Lobby',
   };
   broadcastQuizSchedule(updated);
 
