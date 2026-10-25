@@ -11,6 +11,7 @@ import {
   Bell,
   CornerDownLeft,
   Zap,
+  Users,
 } from 'lucide-react';
 import type { Question, StudentProfile, ProctoringViolation } from '../types/quiz';
 import {
@@ -472,7 +473,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
   // 2. Student Waiting Lobby Screen (Admin has not started quiz yet)
   if (isLobby) {
     return (
-      <div className="w-full max-w-2xl mx-auto px-3 sm:px-4 py-4 sm:py-8">
+      <div className="w-full max-w-lg mx-auto px-2 sm:px-4 py-2 sm:py-6">
         {/* Admin Broadcast Banner */}
         <AnimatePresence>
           {adminBroadcastMsg && (
@@ -480,7 +481,7 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
-              className="mb-4 p-3 rounded-xl bg-blue-950/70 border border-blue-500/30 text-blue-200 text-xs sm:text-sm flex items-center gap-2.5 backdrop-blur-md"
+              className="mb-3 p-3 rounded-xl bg-blue-950/80 border border-blue-500/40 text-blue-200 text-xs sm:text-sm flex items-center gap-2.5 backdrop-blur-md shadow-lg"
             >
               <Bell size={16} className="text-blue-400 shrink-0" />
               <div className="flex-1 text-xs sm:text-sm">
@@ -491,126 +492,124 @@ export default function QuizView({ student, questions, onCompleteQuiz }: QuizVie
           )}
         </AnimatePresence>
 
-        <div className="surface-card rounded-2xl p-5 sm:p-8 relative shadow-2xl border border-white/10 text-center">
+        <div className="surface-card rounded-2xl p-4 sm:p-6 relative shadow-2xl border border-white/10 text-center">
           {/* Top pulse badge */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-mono font-medium mb-4">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span>CONNECTED & READY IN LOBBY</span>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-300 text-[11px] sm:text-xs font-mono font-medium mb-2.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>CONNECTED IN LOBBY • WAITING FOR HOST</span>
           </div>
 
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold text-white tracking-tight mb-2">
-            SPARKTRON 2026 Assessment Arena
+          <h1 className="text-lg sm:text-2xl font-bold text-white tracking-tight">
+            SPARKTRON 2026 Arena
           </h1>
-          <p className="text-xs sm:text-sm text-slate-400 max-w-md mx-auto mb-6">
-            Waiting for the administrator / host to start the quiz. Please remain on this screen.
+          <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1 mb-4 leading-relaxed">
+            Please remain on this screen. All terminals will automatically unlock together when the host starts.
           </p>
 
-          {/* Animated Waiting Radar Box */}
-          <div className="my-6 p-6 sm:p-8 rounded-2xl bg-gradient-to-b from-slate-900/90 to-slate-950 border border-emerald-500/20 shadow-inner">
-            <div className="flex flex-col items-center justify-center py-4">
-              <div className="relative flex items-center justify-center mb-4">
-                <span className="absolute w-20 h-20 rounded-full bg-emerald-500/20 animate-ping" />
-                <span className="absolute w-14 h-14 rounded-full bg-emerald-500/30 animate-pulse" />
-                <div className="relative w-12 h-12 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
-                  <ShieldCheck size={24} />
-                </div>
+          {/* Animated Compact Radar Box */}
+          <div className="mb-4 p-3 rounded-xl bg-gradient-to-r from-emerald-950/30 via-slate-900/60 to-blue-950/30 border border-emerald-500/20 flex items-center gap-3 text-left">
+            <div className="relative flex items-center justify-center w-8 h-8 shrink-0">
+              <span className="absolute w-8 h-8 rounded-full bg-emerald-500/20 animate-ping" />
+              <div className="w-7 h-7 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                <ShieldCheck size={16} />
               </div>
-
-              <div className="text-base sm:text-lg font-semibold text-white tracking-tight">
-                Candidate Registered & In Waiting Room
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-semibold text-white flex items-center gap-1.5">
+                <span>Realtime Arena Connected</span>
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">Live</span>
               </div>
-              <p className="text-xs text-slate-400 mt-1 max-w-sm text-center">
-                The session will begin simultaneously for all candidates as soon as the host launches the assessment.
-              </p>
+              <div className="text-[11px] text-slate-400 truncate">
+                Automatic synchronized unlock on start
+              </div>
             </div>
           </div>
 
-          {/* Candidate / Team Card */}
-          <div className="text-left p-4 rounded-xl bg-slate-900/60 border border-slate-800/80 mb-5">
-            <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-2">
-              Verified Team Credentials
-            </div>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <div className="font-semibold text-sm sm:text-base text-white flex items-center gap-2">
-                  <span>{student.full_name}</span>
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                    Ready
-                  </span>
+          {/* Verified Team Credentials Pass */}
+          <div className="text-left p-3.5 sm:p-4 rounded-xl bg-slate-900/70 border border-slate-800/80 mb-4">
+            <div className="flex items-center justify-between gap-2 pb-2.5 mb-2.5 border-b border-slate-800">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                  <Users size={14} />
                 </div>
-                <div className="text-xs text-slate-400 mt-0.5 flex flex-wrap items-center gap-2 font-mono">
-                  <span>Passcode: <strong className="text-blue-400">{student.passcode || student.registration_code}</strong></span>
-                  <span>•</span>
-                  <span>{student.email}</span>
+                <div className="min-w-0">
+                  <div className="text-[10px] font-mono uppercase tracking-wider text-slate-400">Team Credentials</div>
+                  <div className="font-bold text-xs sm:text-sm text-white truncate">
+                    {student.team_name || student.full_name}
+                  </div>
                 </div>
               </div>
-              <div className="text-xs text-slate-400 sm:text-right">
-                <div className="font-medium text-slate-300">{student.college || 'Engineering College'}</div>
-                <div className="text-[11px] text-slate-400">{student.department || 'ECE Department'}</div>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 shrink-0">
+                ✓ Ready
+              </span>
+            </div>
+
+            {/* 2-Column Info Grid */}
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div className="p-2 rounded-lg bg-slate-950/60 border border-slate-800/80">
+                <div className="text-[10px] font-mono text-slate-400">Passcode</div>
+                <div className="font-mono font-bold text-blue-400 text-xs mt-0.5 tracking-wider truncate">
+                  {student.passcode || student.registration_code}
+                </div>
+              </div>
+              <div className="p-2 rounded-lg bg-slate-950/60 border border-slate-800/80">
+                <div className="text-[10px] font-mono text-slate-400">College / Dept</div>
+                <div className="font-medium text-slate-200 text-xs mt-0.5 truncate" title={`${student.college || ''} ${student.department || ''}`}>
+                  {student.college ? `${student.college} • ` : ''}{student.department || 'ECE'}
+                </div>
               </div>
             </div>
 
+            {/* Team Roster Chips */}
             {student.members && student.members.length > 0 && (
-              <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex flex-wrap items-center gap-2 text-xs">
-                <span className="text-[11px] text-slate-400 font-mono">Team Roster:</span>
-                {student.members.map((m) => (
-                  <span
-                    key={m.id || m.email}
-                    className="px-2 py-0.5 rounded bg-blue-950/60 text-blue-300 border border-blue-500/30 text-[11px] font-mono flex items-center gap-1"
-                  >
-                    <span>{m.isLeader ? `👑 ${m.fullName}` : `👤 ${m.fullName}`}</span>
-                    {m.year && <span className="text-slate-400 text-[10px]">({m.year})</span>}
-                  </span>
-                ))}
+              <div className="mt-2.5 pt-2.5 border-t border-slate-800/80">
+                <div className="text-[10px] font-mono text-slate-400 mb-1.5">Registered Team Roster:</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {student.members.map((m) => (
+                    <span
+                      key={m.id || m.email}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-950/60 text-blue-200 border border-blue-500/30 text-[11px] font-mono"
+                    >
+                      <span>{m.isLeader ? `👑 ${m.fullName}` : `👤 ${m.fullName}`}</span>
+                      {m.year && <span className="text-slate-400 text-[10px]">({m.year})</span>}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
           </div>
 
-          {/* Rules and Protocol notice */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-left mb-5">
-            <div className="p-3 rounded-lg bg-slate-900/40 border border-slate-800/60">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200 mb-1">
-                <ShieldCheck size={14} className="text-emerald-400 shrink-0" />
-                <span>Anti-Cheat Armed</span>
-              </div>
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                Tab switches, window defocus, and screenshots are monitored in real time.
-              </p>
+          {/* Rules & Protocols Micro Cards */}
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-2 text-center mb-4">
+            <div className="p-2 sm:p-2.5 rounded-lg bg-slate-900/50 border border-slate-800/80">
+              <ShieldCheck size={14} className="text-emerald-400 mx-auto mb-1" />
+              <div className="text-[11px] font-semibold text-slate-200">Anti-Cheat</div>
+              <div className="text-[9px] text-slate-400 mt-0.5">Focus Guarded</div>
             </div>
-
-            <div className="p-3 rounded-lg bg-slate-900/40 border border-slate-800/60">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200 mb-1">
-                <Clock size={14} className="text-blue-400 shrink-0" />
-                <span>60s / Question</span>
-              </div>
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                Each question has a strict 60-second limit and auto-submits when expired.
-              </p>
+            <div className="p-2 sm:p-2.5 rounded-lg bg-slate-900/50 border border-slate-800/80">
+              <Clock size={14} className="text-blue-400 mx-auto mb-1" />
+              <div className="text-[11px] font-semibold text-slate-200">60s Timer</div>
+              <div className="text-[9px] text-slate-400 mt-0.5">Per Question</div>
             </div>
-
-            <div className="p-3 rounded-lg bg-slate-900/40 border border-slate-800/60">
-              <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-200 mb-1">
-                <Zap size={14} className="text-amber-400 shrink-0" />
-                <span>Shuffled Paper</span>
-              </div>
-              <p className="text-[11px] text-slate-400 leading-relaxed">
-                Questions and multiple-choice options are uniquely randomized per candidate.
-              </p>
+            <div className="p-2 sm:p-2.5 rounded-lg bg-slate-900/50 border border-slate-800/80">
+              <Zap size={14} className="text-amber-400 mx-auto mb-1" />
+              <div className="text-[11px] font-semibold text-slate-200">Shuffled</div>
+              <div className="text-[9px] text-slate-400 mt-0.5">Unique Order</div>
             </div>
           </div>
 
-          {/* Tester bypass option */}
-          <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs text-slate-400">
+          {/* Bottom Tester Skip */}
+          <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px] text-slate-400">
             <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Realtime cloud sync connected</span>
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span>Realtime cloud connected</span>
             </div>
             <button
               type="button"
               onClick={() => setHasTesterBypassed(true)}
-              className="text-[11px] text-blue-400 hover:text-blue-300 underline underline-offset-2 cursor-pointer transition-colors"
+              className="text-blue-400 hover:text-blue-300 underline underline-offset-2 cursor-pointer transition-colors"
             >
-              Examiner Test: Skip Waiting Room
+              Tester: Skip Waiting Room
             </button>
           </div>
         </div>

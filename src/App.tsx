@@ -318,21 +318,21 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen relative flex flex-col font-sans text-slate-100 selection:bg-blue-500/30 selection:text-blue-200 overflow-hidden">
+      <div className="min-h-screen relative flex flex-col font-sans text-slate-100 selection:bg-blue-500/30 selection:text-blue-200 overflow-x-hidden overflow-y-auto">
         {/* Floating 3D Frosted Glass Background Elements */}
         <FloatingBackground />
 
         {/* Global Minimal Navigation Header */}
         <header className="w-full border-b border-white/[0.08] bg-slate-950/70 backdrop-blur-md sticky top-0 z-50">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-blue-600/15 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold text-xs tracking-wide">
+          <div className="max-w-6xl mx-auto px-3.5 sm:px-6 h-13 sm:h-14 flex items-center justify-between">
+            <div className="flex items-center gap-2.5 sm:gap-3">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-blue-600/15 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold text-xs tracking-wide shrink-0">
                 ST
               </div>
               <div>
                 <div className="text-xs sm:text-sm font-semibold tracking-tight text-white flex items-center gap-2">
                   <span>SPARKTRON 2026</span>
-                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700/60">
+                  <span className="text-[9px] sm:text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700/60">
                     Technical Quiz
                   </span>
                 </div>
@@ -346,7 +346,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={handleAdminLogout}
-                className="text-xs text-slate-400 hover:text-white px-3 py-1.5 rounded-lg border border-slate-800 hover:border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer"
+                className="text-xs text-slate-400 hover:text-white px-2.5 py-1.5 rounded-lg border border-slate-800 hover:border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer"
               >
                 <span>Return to Student Portal</span>
               </button>
@@ -355,7 +355,7 @@ export default function App() {
         </header>
 
         {/* Main Content Area */}
-        <main className="flex-1 flex items-center justify-center py-2 sm:py-8 px-1 sm:px-0 relative z-10">
+        <main className="flex-1 flex items-start sm:items-center justify-center py-2.5 sm:py-8 px-2 sm:px-4 relative z-10 w-full">
           <AnimatePresence mode="wait">
             {route === 'student_login' && (
               <motion.div
