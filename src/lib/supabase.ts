@@ -305,7 +305,7 @@ export async function verifyStudentByPasscode(
     const cleanEmail = (emailInput || '').trim().toLowerCase();
 
     if (!cleanPasscode) {
-      return { success: false, message: 'Please enter your Candidate Assessment Passcode (e.g. SPARK26002).' };
+      return { success: false, message: 'Please enter your Candidate Assessment Passcode.' };
     }
     if (!cleanEmail) {
       return { success: false, message: 'Please enter your team\'s Registered Email Address.' };

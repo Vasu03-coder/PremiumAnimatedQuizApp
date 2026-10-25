@@ -151,12 +151,12 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
                   setPasscode(e.target.value);
                   if (errorMessage) setErrorMessage(null);
                 }}
-                placeholder="e.g. SPARK26002"
+                placeholder="Enter your Passcode"
                 className="w-full minimal-input rounded-xl pl-9 pr-3.5 py-2.5 text-sm tracking-wider font-mono focus:outline-none uppercase"
               />
             </div>
             <p className="text-[11px] text-slate-500 mt-1">
-              * Enter your official Passcode (e.g. <span className="text-blue-400 font-mono">SPARK26002</span>)
+              * Enter your official candidate assessment passcode
             </p>
           </div>
 
@@ -196,12 +196,12 @@ export default function StudentLogin({ onLoginSuccess }: StudentLoginProps) {
                   setEmail(e.target.value);
                   if (errorMessage) setErrorMessage(null);
                 }}
-                placeholder="e.g. josephsamuvel1310@gmail.com"
+                placeholder="Enter your registered email"
                 className="w-full minimal-input rounded-xl pl-9 pr-3.5 py-2.5 text-sm focus:outline-none"
               />
             </div>
             <p className="text-[11px] text-slate-500 mt-1">
-              * Enter the registered email ID of either team member for this passcode
+              * Enter the registered email ID of either team member
             </p>
           </div>
 
